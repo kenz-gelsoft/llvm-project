@@ -132,7 +132,7 @@ else()
       )
   elseif (CMAKE_SYSTEM_NAME MATCHES "Haiku")
     add_host_subdirectory(haiku
-      #haiku/Host.cpp
+      haiku/Host.cpp
       haiku/HostInfoHaiku.cpp
       )
 
