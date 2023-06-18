@@ -18,7 +18,7 @@ using namespace lldb_private;
 void OptionParser::Prepare(std::unique_lock<std::mutex> &lock) {
   static std::mutex g_mutex;
   lock = std::unique_lock<std::mutex>(g_mutex);
-#ifdef __GLIBC__
+#if defined(__GLIBC__) || defined(__HAIKU__)
   optind = 0;
 #else
   optreset = 1;

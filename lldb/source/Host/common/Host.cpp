@@ -178,7 +178,7 @@ static thread_result_t MonitorChildProcessThreadFunction(void *arg) {
   delete info;
 
   int status = -1;
-#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__)
+#if defined(__FreeBSD__) || defined(__FreeBSD_kernel__) || defined(__OpenBSD__) || defined(__HAIKU__)
 #define __WALL 0
 #endif
   const int options = __WALL;
