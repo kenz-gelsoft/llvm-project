@@ -2170,6 +2170,21 @@ bool RegisterContextUnwind::ReadPC(addr_t &pc) {
   }
 }
 
+#ifdef __HAIKU__
+static int vasprintf(char **strp, const char *format, va_list args) {
+  int size = vsnprintf(*strp, 0, format, args);
+  *strp = (char *)malloc(size);
+  if (*strp == nullptr) {
+    return -1;
+  }
+  int result = vsnprintf(*strp, size, format, args);
+  if (result < 0) {
+    return result;
+  }
+  return size;
+}
+#endif
+
 void RegisterContextUnwind::UnwindLogMsg(const char *fmt, ...) {
   Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_UNWIND));
   if (log) {
