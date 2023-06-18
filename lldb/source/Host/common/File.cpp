@@ -210,6 +210,21 @@ size_t File::Printf(const char *format, ...) {
   return result;
 }
 
+#ifdef __HAIKU__
+static int vasprintf(char **strp, const char *format, va_list args) {
+  int size = vsnprintf(*strp, 0, format, args);
+  *strp = (char *)malloc(size);
+  if (*strp == nullptr) {
+    return -1;
+  }
+  int result = vsnprintf(*strp, size, format, args);
+  if (result < 0) {
+    return result;
+  }
+  return size;
+}
+#endif
+
 size_t File::PrintfVarArg(const char *format, va_list args) {
   size_t result = 0;
   char *s = nullptr;
