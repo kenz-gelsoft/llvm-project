@@ -8,7 +8,7 @@
 
 #include "ObjectContainerBSDArchive.h"
 
-#if defined(_WIN32) || defined(__ANDROID__)
+#if defined(_WIN32) || defined(__ANDROID__) || defined(__HAIKU__)
 // Defines from ar, missing on Windows
 #define ARMAG "!<arch>\n"
 #define SARMAG 8
