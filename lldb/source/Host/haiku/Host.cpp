@@ -1,4 +1,4 @@
-//===-- source/Host/openbsd/Host.cpp --------------------------------------===//
+//===-- source/Host/haiku/Host.cpp --------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -55,7 +55,7 @@ Environment Host::GetEnvironment() {
 }
 
 static bool
-GetOpenBSDProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
+GetHaikuProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
                       ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
     int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ARGS,
@@ -102,7 +102,7 @@ GetOpenBSDProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
   return false;
 }
 
-static bool GetOpenBSDProcessCPUType(ProcessInstanceInfo &process_info) {
+static bool GetHaikuProcessCPUType(ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
     process_info.GetArchitecture() =
         HostInfo::GetArchitecture(HostInfo::eArchKindDefault);
@@ -112,7 +112,7 @@ static bool GetOpenBSDProcessCPUType(ProcessInstanceInfo &process_info) {
   return false;
 }
 
-static bool GetOpenBSDProcessUserAndGroup(ProcessInstanceInfo &process_info) {
+static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
   struct kinfo_proc proc_kinfo;
   size_t proc_kinfo_size;
 
@@ -190,8 +190,8 @@ uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
 
     // Make sure our info matches before we go fetch the name and cpu type
     if (match_info.Matches(process_info) &&
-        GetOpenBSDProcessArgs(&match_info, process_info)) {
-      GetOpenBSDProcessCPUType(process_info);
+        GetHaikuProcessArgs(&match_info, process_info)) {
+      GetHaikuProcessCPUType(process_info);
       if (match_info.Matches(process_info))
         process_infos.push_back(process_info);
     }
@@ -203,10 +203,10 @@ uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
 bool Host::GetProcessInfo(lldb::pid_t pid, ProcessInstanceInfo &process_info) {
   process_info.SetProcessID(pid);
 
-  if (GetOpenBSDProcessArgs(NULL, process_info)) {
+  if (GetHaikuProcessArgs(NULL, process_info)) {
     // should use libprocstat instead of going right into sysctl?
-    GetOpenBSDProcessCPUType(process_info);
-    GetOpenBSDProcessUserAndGroup(process_info);
+    GetHaikuProcessCPUType(process_info);
+    GetHaikuProcessUserAndGroup(process_info);
     return true;
   }
 
