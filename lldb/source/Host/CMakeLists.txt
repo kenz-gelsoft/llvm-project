@@ -159,6 +159,10 @@ if (WIN32)
   list(APPEND LLDB_SYSTEM_LIBS psapi)
 endif()
 
+if (CMAKE_SYSTEM_NAME MATCHES "Haiku")
+  list(APPEND EXTRA_LIBS network)
+endif ()
+
 if (LLDB_ENABLE_LIBEDIT)
   list(APPEND LLDB_LIBEDIT_LIBS ${LibEdit_LIBRARIES})
   if (LLVM_BUILD_STATIC)
