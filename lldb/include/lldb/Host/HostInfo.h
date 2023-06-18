@@ -55,6 +55,9 @@
 #elif defined(__APPLE__)
 #include "lldb/Host/macosx/HostInfoMacOSX.h"
 #define HOST_INFO_TYPE HostInfoMacOSX
+#elif defined(__HAIKU__)
+#include "lldb/Host/haiku/HostInfoHaiku.h"
+#define HOST_INFO_TYPE HostInfoHaiku
 #else
 #include "lldb/Host/posix/HostInfoPosix.h"
 #define HOST_INFO_TYPE HostInfoPosix
