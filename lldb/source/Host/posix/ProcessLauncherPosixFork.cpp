@@ -16,7 +16,9 @@
 #include "llvm/Support/Errno.h"
 
 #include <limits.h>
+#ifndef __HAIKU__
 #include <sys/ptrace.h>
+#endif
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -148,7 +150,9 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
         close(fd);
 
     // Start tracing this child that is about to exec.
+#ifndef __HAIKU__ // TODO: impl
     if (ptrace(PT_TRACE_ME, 0, nullptr, 0) == -1)
+#endif
       ExitWithError(error_fd, "ptrace");
   }
 
