@@ -213,8 +213,15 @@ size_t File::Printf(const char *format, ...) {
 size_t File::PrintfVarArg(const char *format, va_list args) {
   size_t result = 0;
   char *s = nullptr;
+#if __HAIKU__
+  int r = vsprintf(s, format, args);
+  if (r >= 0) {
+    s = (char*) malloc(r);
+    result = vsprintf(s, format, args);
+#else
   result = vasprintf(&s, format, args);
   if (s != nullptr) {
+#endif
     if (result > 0) {
       size_t s_len = result;
       Write(s, s_len);
