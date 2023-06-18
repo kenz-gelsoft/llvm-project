@@ -8,12 +8,12 @@
 
 #include <sys/types.h>
 
-#include <sys/signal.h>
-#include <sys/exec.h>
-#include <sys/proc.h>
-#include <sys/ptrace.h>
-#include <sys/sysctl.h>
-#include <sys/user.h>
+//#include <sys/signal.h>
+//#include <sys/exec.h>
+//#include <sys/proc.h>
+//#include <sys/ptrace.h>
+//#include <sys/sysctl.h>
+//#include <sys/user.h>
 
 #include <stdio.h>
 
@@ -58,12 +58,13 @@ static bool
 GetHaikuProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
                       ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
-    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ARGS,
-                  (int)process_info.GetProcessID()};
+//    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ARGS,
+//                  (int)process_info.GetProcessID()};
 
     char arg_data[8192];
     size_t arg_data_size = sizeof(arg_data);
-    if (::sysctl(mib, 4, arg_data, &arg_data_size, NULL, 0) == 0) {
+//    if (::sysctl(mib, 4, arg_data, &arg_data_size, NULL, 0) == 0) {
+    if (true) {
       DataExtractor data(arg_data, arg_data_size, endian::InlHostByteOrder(),
                          sizeof(void *));
       lldb::offset_t offset = 0;
@@ -113,24 +114,24 @@ static bool GetHaikuProcessCPUType(ProcessInstanceInfo &process_info) {
 }
 
 static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
-  struct kinfo_proc proc_kinfo;
-  size_t proc_kinfo_size;
+//  struct kinfo_proc proc_kinfo;
+//  size_t proc_kinfo_size;
 
   if (process_info.ProcessIDIsValid()) {
-    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID,
-                  (int)process_info.GetProcessID()};
-    proc_kinfo_size = sizeof(struct kinfo_proc);
-
-    if (::sysctl(mib, 4, &proc_kinfo, &proc_kinfo_size, NULL, 0) == 0) {
-      if (proc_kinfo_size > 0) {
-        process_info.SetParentProcessID(proc_kinfo.p_ppid);
-        process_info.SetUserID(proc_kinfo.p_ruid);
-        process_info.SetGroupID(proc_kinfo.p_rgid);
-        process_info.SetEffectiveUserID(proc_kinfo.p_uid);
-	process_info.SetEffectiveGroupID(proc_kinfo.p_gid);
-        return true;
-      }
-    }
+//    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID,
+//                  (int)process_info.GetProcessID()};
+//    proc_kinfo_size = sizeof(struct kinfo_proc);
+//
+//    if (::sysctl(mib, 4, &proc_kinfo, &proc_kinfo_size, NULL, 0) == 0) {
+//      if (proc_kinfo_size > 0) {
+//        process_info.SetParentProcessID(proc_kinfo.p_ppid);
+//        process_info.SetUserID(proc_kinfo.p_ruid);
+//        process_info.SetGroupID(proc_kinfo.p_rgid);
+//        process_info.SetEffectiveUserID(proc_kinfo.p_uid);
+//	process_info.SetEffectiveGroupID(proc_kinfo.p_gid);
+//        return true;
+//      }
+//    }
   }
   process_info.SetParentProcessID(LLDB_INVALID_PROCESS_ID);
   process_info.SetUserID(UINT32_MAX);
@@ -142,51 +143,51 @@ static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
 
 uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
                                  ProcessInstanceInfoList &process_infos) {
-  std::vector<struct kinfo_proc> kinfos;
-
-  int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
+//  std::vector<struct kinfo_proc> kinfos;
+//
+//  int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
 
   size_t pid_data_size = 0;
-  if (::sysctl(mib, 3, NULL, &pid_data_size, NULL, 0) != 0)
+//  if (::sysctl(mib, 3, NULL, &pid_data_size, NULL, 0) != 0)
     return 0;
 
   // Add a few extra in case a few more show up
-  const size_t estimated_pid_count =
-      (pid_data_size / sizeof(struct kinfo_proc)) + 10;
-
-  kinfos.resize(estimated_pid_count);
-  pid_data_size = kinfos.size() * sizeof(struct kinfo_proc);
-
-  if (::sysctl(mib, 3, &kinfos[0], &pid_data_size, NULL, 0) != 0)
+//  const size_t estimated_pid_count =
+//      (pid_data_size / sizeof(struct kinfo_proc)) + 10;
+//
+//  kinfos.resize(estimated_pid_count);
+//  pid_data_size = kinfos.size() * sizeof(struct kinfo_proc);
+//
+//  if (::sysctl(mib, 3, &kinfos[0], &pid_data_size, NULL, 0) != 0)
     return 0;
 
-  const size_t actual_pid_count = (pid_data_size / sizeof(struct kinfo_proc));
+//  const size_t actual_pid_count = (pid_data_size / sizeof(struct kinfo_proc));
 
   bool all_users = match_info.GetMatchAllUsers();
   const ::pid_t our_pid = getpid();
   const uid_t our_uid = getuid();
-  for (size_t i = 0; i < actual_pid_count; i++) {
-    const struct kinfo_proc &kinfo = kinfos[i];
-    const bool kinfo_user_matches = (all_users || (kinfo.p_ruid == our_uid) ||
-                                     // Special case, if lldb is being run as
-                                     // root we can attach to anything.
-                                     (our_uid == 0));
-
-    if (kinfo_user_matches == false || // Make sure the user is acceptable
-        kinfo.p_pid == our_pid ||     // Skip this process
-        kinfo.p_pid == 0 ||           // Skip kernel (kernel pid is zero)
-        kinfo.p_stat == SZOMB ||      // Zombies are bad, they like brains...
-        kinfo.p_psflags & PS_TRACED || // Being debugged?
-        kinfo.p_flag & P_WEXIT)       // Working on exiting
-      continue;
-
+//  for (size_t i = 0; i < actual_pid_count; i++) {
+//    const struct kinfo_proc &kinfo = kinfos[i];
+//    const bool kinfo_user_matches = (all_users || (kinfo.p_ruid == our_uid) ||
+//                                     // Special case, if lldb is being run as
+//                                     // root we can attach to anything.
+//                                     (our_uid == 0));
+//
+//    if (kinfo_user_matches == false || // Make sure the user is acceptable
+//        kinfo.p_pid == our_pid ||     // Skip this process
+//        kinfo.p_pid == 0 ||           // Skip kernel (kernel pid is zero)
+//        kinfo.p_stat == SZOMB ||      // Zombies are bad, they like brains...
+//        kinfo.p_psflags & PS_TRACED || // Being debugged?
+//        kinfo.p_flag & P_WEXIT)       // Working on exiting
+//      continue;
+//
     ProcessInstanceInfo process_info;
-    process_info.SetProcessID(kinfo.p_pid);
-    process_info.SetParentProcessID(kinfo.p_ppid);
-    process_info.SetUserID(kinfo.p_ruid);
-    process_info.SetGroupID(kinfo.p_rgid);
-    process_info.SetEffectiveUserID(kinfo.p_svuid);
-    process_info.SetEffectiveGroupID(kinfo.p_svgid);
+//    process_info.SetProcessID(kinfo.p_pid);
+//    process_info.SetParentProcessID(kinfo.p_ppid);
+//    process_info.SetUserID(kinfo.p_ruid);
+//    process_info.SetGroupID(kinfo.p_rgid);
+//    process_info.SetEffectiveUserID(kinfo.p_svuid);
+//    process_info.SetEffectiveGroupID(kinfo.p_svgid);
 
     // Make sure our info matches before we go fetch the name and cpu type
     if (match_info.Matches(process_info) &&
@@ -195,7 +196,7 @@ uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
       if (match_info.Matches(process_info))
         process_infos.push_back(process_info);
     }
-  }
+//  }
 
   return process_infos.size();
 }
