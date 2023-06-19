@@ -3,6 +3,10 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Windows" OR CMAKE_SYSTEM_NAME MATCHES "NetBSD" )
   list(APPEND extra_libs lldbHost)
 endif ()
 
+if (CMAKE_SYSTEM_NAME MATCHES "Haiku")
+  list(APPEND extra_libs network)
+endif ()
+
 if (HAVE_LIBPTHREAD)
   list(APPEND extra_libs pthread)
 endif ()
