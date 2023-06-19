@@ -2172,16 +2172,22 @@ bool RegisterContextUnwind::ReadPC(addr_t &pc) {
 
 #ifdef __HAIKU__
 static int vasprintf(char **strp, const char *format, va_list args) {
-  int size = vsnprintf(*strp, 0, format, args);
-  *strp = (char *)malloc(size);
-  if (*strp == nullptr) {
-    return -1;
+  // Use copy to measure the size as it will be consumed
+  va_list copy_args;
+  va_copy(copy_args, args);
+
+  int result = -1;
+  int size = vsnprintf(*strp, 0, format, copy_args);
+  *strp = (char *)malloc(size + 1);
+  if (*strp != nullptr) {
+    result = vsnprintf(*strp, size + 1, format, args);
+    if (result >= 0) {
+      result = size;
+    }
   }
-  int result = vsnprintf(*strp, size, format, args);
-  if (result < 0) {
-    return result;
-  }
-  return size;
+
+  va_end(copy_args);
+  return result;
 }
 #endif
 
