@@ -99,7 +99,11 @@ TEST_F(MainLoopTest, TerminatesImmediately) {
 }
 
 #ifdef LLVM_ON_UNIX
+#ifdef __HAIKU__
+TEST_F(MainLoopTest, DISABLED_DetectsEOF) {
+#else
 TEST_F(MainLoopTest, DetectsEOF) {
+#endif
 
   PseudoTerminal term;
   ASSERT_THAT_ERROR(term.OpenFirstAvailablePrimary(O_RDWR), llvm::Succeeded());
