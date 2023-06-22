@@ -70,6 +70,8 @@ class LLVMConfig(object):
             features.add('system-aix')
         elif platform.system() == 'SunOS':
             features.add('system-solaris')
+        elif platform.system() == 'Haiku':
+            features.add('system-haiku')
 
         # Native compilation: host arch == default triple arch
         # Both of these values should probably be in every site config (e.g. as
@@ -417,6 +419,11 @@ class LLVMConfig(object):
         # Clang/Win32 may refer to %INCLUDE%. vsvarsall.bat sets it.
         if platform.system() != 'Windows':
             possibly_dangerous_env_vars.append('INCLUDE')
+
+        # Haiku requires $LIBRARY_PATH to resolve built shared objects.
+        # Is with_environment() safer?
+        if platform.system() == 'Haiku':
+            possibly_dangerous_env_vars.remove('LIBRARY_PATH')
 
         self.clear_environment(possibly_dangerous_env_vars)
 
