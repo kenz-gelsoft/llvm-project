@@ -1,4 +1,4 @@
-//===-- PlatformNetBSD.h ----------------------------------------*- C++ -*-===//
+//===-- PlatformHaiku.h -----------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,17 +6,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SOURCE_PLUGINS_PLATFORM_NETBSD_PLATFORMNETBSD_H
-#define LLDB_SOURCE_PLUGINS_PLATFORM_NETBSD_PLATFORMNETBSD_H
+#ifndef LLDB_SOURCE_PLUGINS_PLATFORM_HAIKU_PLATFORMHAIKU_H
+#define LLDB_SOURCE_PLUGINS_PLATFORM_HAIKU_PLATFORMHAIKU_H
 
 #include "Plugins/Platform/POSIX/PlatformPOSIX.h"
 
 namespace lldb_private {
-namespace platform_netbsd {
+namespace platform_haiku {
 
-class PlatformNetBSD : public PlatformPOSIX {
+class PlatformHaiku : public PlatformPOSIX {
 public:
-  PlatformNetBSD(bool is_host);
+  PlatformHaiku(bool is_host);
 
   static void Initialize();
 
@@ -54,7 +54,7 @@ public:
                                   lldb::addr_t offset) override;
 };
 
-} // namespace platform_netbsd
+} // namespace platform_haiku
 } // namespace lldb_private
 
-#endif // LLDB_SOURCE_PLUGINS_PLATFORM_NETBSD_PLATFORMNETBSD_H
+#endif // LLDB_SOURCE_PLUGINS_PLATFORM_HAIKU_PLATFORMHAIKU_H

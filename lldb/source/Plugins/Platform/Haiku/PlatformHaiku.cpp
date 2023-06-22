@@ -1,4 +1,4 @@
-//===-- PlatformNetBSD.cpp ------------------------------------------------===//
+//===-- PlatformHaiku.cpp -------------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "PlatformNetBSD.h"
+#include "PlatformHaiku.h"
 #include "lldb/Host/Config.h"
 
 #include <stdio.h>
@@ -25,21 +25,21 @@
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/StreamString.h"
 
-// Define these constants from NetBSD mman.h for use when targeting remote
-// netbsd systems even when host has different values.
+// Define these constants from Haiku mman.h for use when targeting remote
+// haiku systems even when host has different values.
 #define MAP_PRIVATE 0x0002
 #define MAP_ANON 0x1000
 
 using namespace lldb;
 using namespace lldb_private;
-using namespace lldb_private::platform_netbsd;
+using namespace lldb_private::platform_haiku;
 
-LLDB_PLUGIN_DEFINE(PlatformNetBSD)
+LLDB_PLUGIN_DEFINE(PlatformHaiku)
 
 static uint32_t g_initialize_count = 0;
 
 
-PlatformSP PlatformNetBSD::CreateInstance(bool force, const ArchSpec *arch) {
+PlatformSP PlatformHaiku::CreateInstance(bool force, const ArchSpec *arch) {
   Log *log(GetLogIfAllCategoriesSet(LIBLLDB_LOG_PLATFORM));
   LLDB_LOG(log, "force = {0}, arch=({1}, {2})", force,
            arch ? arch->GetArchitectureName() : "<null>",
@@ -49,7 +49,7 @@ PlatformSP PlatformNetBSD::CreateInstance(bool force, const ArchSpec *arch) {
   if (!create && arch && arch->IsValid()) {
     const llvm::Triple &triple = arch->GetTriple();
     switch (triple.getOS()) {
-    case llvm::Triple::NetBSD:
+    case llvm::Triple::Haiku:
       create = true;
       break;
 
@@ -60,52 +60,52 @@ PlatformSP PlatformNetBSD::CreateInstance(bool force, const ArchSpec *arch) {
 
   LLDB_LOG(log, "create = {0}", create);
   if (create) {
-    return PlatformSP(new PlatformNetBSD(false));
+    return PlatformSP(new PlatformHaiku(false));
   }
   return PlatformSP();
 }
 
-ConstString PlatformNetBSD::GetPluginNameStatic(bool is_host) {
+ConstString PlatformHaiku::GetPluginNameStatic(bool is_host) {
   if (is_host) {
     static ConstString g_host_name(Platform::GetHostPlatformName());
     return g_host_name;
   } else {
-    static ConstString g_remote_name("remote-netbsd");
+    static ConstString g_remote_name("remote-haiku");
     return g_remote_name;
   }
 }
 
-const char *PlatformNetBSD::GetPluginDescriptionStatic(bool is_host) {
+const char *PlatformHaiku::GetPluginDescriptionStatic(bool is_host) {
   if (is_host)
-    return "Local NetBSD user platform plug-in.";
+    return "Local Haiku user platform plug-in.";
   else
-    return "Remote NetBSD user platform plug-in.";
+    return "Remote Haiku user platform plug-in.";
 }
 
-ConstString PlatformNetBSD::GetPluginName() {
+ConstString PlatformHaiku::GetPluginName() {
   return GetPluginNameStatic(IsHost());
 }
 
-void PlatformNetBSD::Initialize() {
+void PlatformHaiku::Initialize() {
   PlatformPOSIX::Initialize();
 
   if (g_initialize_count++ == 0) {
-#if defined(__NetBSD__)
-    PlatformSP default_platform_sp(new PlatformNetBSD(true));
+#if defined(__Haiku__)
+    PlatformSP default_platform_sp(new PlatformHaiku(true));
     default_platform_sp->SetSystemArchitecture(HostInfo::GetArchitecture());
     Platform::SetHostPlatform(default_platform_sp);
 #endif
     PluginManager::RegisterPlugin(
-        PlatformNetBSD::GetPluginNameStatic(false),
-        PlatformNetBSD::GetPluginDescriptionStatic(false),
-        PlatformNetBSD::CreateInstance, nullptr);
+        PlatformHaiku::GetPluginNameStatic(false),
+        PlatformHaiku::GetPluginDescriptionStatic(false),
+        PlatformHaiku::CreateInstance, nullptr);
   }
 }
 
-void PlatformNetBSD::Terminate() {
+void PlatformHaiku::Terminate() {
   if (g_initialize_count > 0) {
     if (--g_initialize_count == 0) {
-      PluginManager::UnregisterPlugin(PlatformNetBSD::CreateInstance);
+      PluginManager::UnregisterPlugin(PlatformHaiku::CreateInstance);
     }
   }
 
@@ -113,15 +113,15 @@ void PlatformNetBSD::Terminate() {
 }
 
 /// Default Constructor
-PlatformNetBSD::PlatformNetBSD(bool is_host)
+PlatformHaiku::PlatformHaiku(bool is_host)
     : PlatformPOSIX(is_host) // This is the local host platform
 {}
 
-bool PlatformNetBSD::GetSupportedArchitectureAtIndex(uint32_t idx,
+bool PlatformHaiku::GetSupportedArchitectureAtIndex(uint32_t idx,
                                                      ArchSpec &arch) {
   if (IsHost()) {
     ArchSpec hostArch = HostInfo::GetArchitecture(HostInfo::eArchKindDefault);
-    if (hostArch.GetTriple().isOSNetBSD()) {
+    if (hostArch.GetTriple().isOSHaiku()) {
       if (idx == 0) {
         arch = hostArch;
         return arch.IsValid();
@@ -139,8 +139,8 @@ bool PlatformNetBSD::GetSupportedArchitectureAtIndex(uint32_t idx,
       return m_remote_platform_sp->GetSupportedArchitectureAtIndex(idx, arch);
 
     llvm::Triple triple;
-    // Set the OS to NetBSD
-    triple.setOS(llvm::Triple::NetBSD);
+    // Set the OS to Haiku
+    triple.setOS(llvm::Triple::Haiku);
     // Set the architecture
     switch (idx) {
     case 0:
@@ -165,12 +165,12 @@ bool PlatformNetBSD::GetSupportedArchitectureAtIndex(uint32_t idx,
   return false;
 }
 
-void PlatformNetBSD::GetStatus(Stream &strm) {
+void PlatformHaiku::GetStatus(Stream &strm) {
   Platform::GetStatus(strm);
 
 #if LLDB_ENABLE_POSIX
   // Display local kernel information only when we are running in host mode.
-  // Otherwise, we would end up printing non-NetBSD information (when running
+  // Otherwise, we would end up printing non-Haiku information (when running
   // on Mac OS for example).
   if (IsHost()) {
     struct utsname un;
@@ -186,7 +186,7 @@ void PlatformNetBSD::GetStatus(Stream &strm) {
 }
 
 uint32_t
-PlatformNetBSD::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
+PlatformHaiku::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
   uint32_t resume_count = 0;
 
   // Always resume past the initial stop when we use eLaunchFlagDebug
@@ -220,7 +220,7 @@ PlatformNetBSD::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
   return resume_count;
 }
 
-bool PlatformNetBSD::CanDebugProcess() {
+bool PlatformHaiku::CanDebugProcess() {
   if (IsHost()) {
     return true;
   } else {
@@ -229,11 +229,11 @@ bool PlatformNetBSD::CanDebugProcess() {
   }
 }
 
-void PlatformNetBSD::CalculateTrapHandlerSymbolNames() {
+void PlatformHaiku::CalculateTrapHandlerSymbolNames() {
   m_trap_handlers.push_back(ConstString("_sigtramp"));
 }
 
-MmapArgList PlatformNetBSD::GetMmapArgumentList(const ArchSpec &arch,
+MmapArgList PlatformHaiku::GetMmapArgumentList(const ArchSpec &arch,
                                                 addr_t addr, addr_t length,
                                                 unsigned prot, unsigned flags,
                                                 addr_t fd, addr_t offset) {

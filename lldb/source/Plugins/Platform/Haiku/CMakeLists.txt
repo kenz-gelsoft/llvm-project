@@ -1,5 +1,5 @@
-add_lldb_library(lldbPluginPlatformNetBSD PLUGIN
-  PlatformNetBSD.cpp
+add_lldb_library(lldbPluginPlatformHaiku PLUGIN
+  PlatformHaiku.cpp
 
    LINK_LIBS
     lldbBreakpoint
