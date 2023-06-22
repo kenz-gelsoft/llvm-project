@@ -6,6 +6,8 @@
   add_subdirectory(NetBSD)
 #elseif (CMAKE_SYSTEM_NAME MATCHES "OpenBSD")
   add_subdirectory(OpenBSD)
+#elseif (CMAKE_SYSTEM_NAME MATCHES "Haiku")
+  add_subdirectory(Haiku)
 #elseif (CMAKE_SYSTEM_NAME MATCHES "Darwin")
   add_subdirectory(MacOSX)
 #elseif (CMAKE_SYSTEM_NAME MATCHES "Windows")
