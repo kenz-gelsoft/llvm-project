@@ -90,7 +90,7 @@ void PlatformHaiku::Initialize() {
   PlatformPOSIX::Initialize();
 
   if (g_initialize_count++ == 0) {
-#if defined(__Haiku__)
+#if defined(__HAIKU__)
     PlatformSP default_platform_sp(new PlatformHaiku(true));
     default_platform_sp->SetSystemArchitecture(HostInfo::GetArchitecture());
     Platform::SetHostPlatform(default_platform_sp);
