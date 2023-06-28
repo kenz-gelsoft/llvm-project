@@ -21,12 +21,18 @@
 // they define some macros which collide with variable names in other modules
 // clang-format off
 #include <sys/types.h>
+#ifndef __HAIKU__
 #include <sys/ptrace.h>
 #include <sys/sysctl.h>
+#endif
 #include <sys/wait.h>
+#ifndef __HAIKU__
 #include <uvm/uvm_prot.h>
+#endif
 #include <elf.h>
+#ifndef __HAIKU__
 #include <util.h>
+#endif
 // clang-format on
 
 using namespace lldb;
@@ -178,6 +184,8 @@ void NativeProcessHaiku::MonitorExited(lldb::pid_t pid, WaitStatus status) {
 }
 
 void NativeProcessHaiku::MonitorSIGSTOP(lldb::pid_t pid) {
+  assert(false);
+#ifndef __HAIKU__
   ptrace_siginfo_t info;
 
   const auto siginfo_err =
@@ -196,10 +204,13 @@ void NativeProcessHaiku::MonitorSIGSTOP(lldb::pid_t pid) {
     }
     SetState(StateType::eStateStopped, true);
   }
+#endif // __HAIKU__
 }
 
 void NativeProcessHaiku::MonitorSIGTRAP(lldb::pid_t pid) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
+  assert(false);
+#ifndef __HAIKU__
   ptrace_siginfo_t info;
 
   const auto siginfo_err =
@@ -321,26 +332,28 @@ void NativeProcessHaiku::MonitorSIGTRAP(lldb::pid_t pid) {
   // otherwise leave the debugger hanging.
   LLDB_LOG(log, "unknown SIGTRAP, passing to generic handler");
   MonitorSignal(pid, SIGTRAP);
+#endif // __HAIKU__
 }
 
 void NativeProcessHaiku::MonitorSignal(lldb::pid_t pid, int signal) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
-  ptrace_siginfo_t info;
-
-  const auto siginfo_err =
-      PtraceWrapper(PT_GET_SIGINFO, pid, &info, sizeof(info));
-  if (siginfo_err.Fail()) {
-    LLDB_LOG(log, "PT_LWPINFO failed {0}", siginfo_err);
-    return;
-  }
+  assert(false);
+//  ptrace_siginfo_t info;
+//
+//  const auto siginfo_err =
+//      PtraceWrapper(PT_GET_SIGINFO, pid, &info, sizeof(info));
+//  if (siginfo_err.Fail()) {
+//    LLDB_LOG(log, "PT_LWPINFO failed {0}", siginfo_err);
+//    return;
+//  }
 
   for (const auto &abs_thread : m_threads) {
     NativeThreadHaiku &thread = static_cast<NativeThreadHaiku &>(*abs_thread);
-    assert(info.psi_lwpid >= 0);
-    if (info.psi_lwpid == 0 ||
-        static_cast<lldb::tid_t>(info.psi_lwpid) == thread.GetID())
-      thread.SetStoppedBySignal(info.psi_siginfo.si_signo, &info.psi_siginfo);
-    else
+//    assert(info.psi_lwpid >= 0);
+//    if (info.psi_lwpid == 0 ||
+//        static_cast<lldb::tid_t>(info.psi_lwpid) == thread.GetID())
+//      thread.SetStoppedBySignal(info.psi_siginfo.si_signo, &info.psi_siginfo);
+//    else
       thread.SetStoppedWithNoReason();
   }
   SetState(StateType::eStateStopped, true);
@@ -353,7 +366,8 @@ Status NativeProcessHaiku::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
   int ret;
 
   errno = 0;
-  ret = ptrace(req, static_cast<::pid_t>(pid), addr, data);
+  assert(false);
+//  ret = ptrace(req, static_cast<::pid_t>(pid), addr, data);
 
   if (ret == -1)
     error.SetErrorToErrno();
@@ -369,6 +383,7 @@ Status NativeProcessHaiku::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
   return error;
 }
 
+#ifndef __HAIKU__
 static llvm::Expected<ptrace_siginfo_t> ComputeSignalInfo(
     const std::vector<std::unique_ptr<NativeThreadProtocol>> &threads,
     const ResumeActionList &resume_actions) {
@@ -422,6 +437,7 @@ static llvm::Expected<ptrace_siginfo_t> ComputeSignalInfo(
     siginfo.psi_lwpid = 0;
   return siginfo;
 }
+#endif // __HAIKU__
 
 Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -429,10 +445,11 @@ Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
 
   Status ret;
 
-  Expected<ptrace_siginfo_t> siginfo =
-      ComputeSignalInfo(m_threads, resume_actions);
-  if (!siginfo)
-    return Status(siginfo.takeError());
+  assert(false);
+//  Expected<ptrace_siginfo_t> siginfo =
+//      ComputeSignalInfo(m_threads, resume_actions);
+//  if (!siginfo)
+//    return Status(siginfo.takeError());
 
   for (const auto &abs_thread : m_threads) {
     assert(abs_thread && "thread list should not contain NULL threads");
@@ -483,22 +500,27 @@ Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
   }
 
   int signal = 0;
-  if (siginfo->psi_siginfo.si_signo != LLDB_INVALID_SIGNAL_NUMBER) {
-    ret = PtraceWrapper(PT_SET_SIGINFO, GetID(), &siginfo.get(),
-                        sizeof(*siginfo));
+//  if (siginfo->psi_siginfo.si_signo != LLDB_INVALID_SIGNAL_NUMBER) {
+//    ret = PtraceWrapper(PT_SET_SIGINFO, GetID(), &siginfo.get(),
+//                        sizeof(*siginfo));
     if (!ret.Success())
       return ret;
-    signal = siginfo->psi_siginfo.si_signo;
-  }
+//    signal = siginfo->psi_siginfo.si_signo;
+//  }
 
-  ret =
-      PtraceWrapper(PT_CONTINUE, GetID(), reinterpret_cast<void *>(1), signal);
+//  ret =
+//      PtraceWrapper(PT_CONTINUE, GetID(), reinterpret_cast<void *>(1), signal);
   if (ret.Success())
     SetState(eStateRunning, true);
   return ret;
 }
 
-Status NativeProcessHaiku::Halt() { return PtraceWrapper(PT_STOP, GetID()); }
+Status NativeProcessHaiku::Halt() {
+  assert(false);
+//  return PtraceWrapper(PT_STOP, GetID());
+  Status error;
+  return error;
+}
 
 Status NativeProcessHaiku::Detach() {
   Status error;
@@ -510,7 +532,9 @@ Status NativeProcessHaiku::Detach() {
   if (GetID() == LLDB_INVALID_PROCESS_ID)
     return error;
 
-  return PtraceWrapper(PT_DETACH, GetID());
+  assert(false);
+//  return PtraceWrapper(PT_DETACH, GetID());
+  return error;
 }
 
 Status NativeProcessHaiku::Signal(int signo) {
@@ -523,7 +547,10 @@ Status NativeProcessHaiku::Signal(int signo) {
 }
 
 Status NativeProcessHaiku::Interrupt() {
-  return PtraceWrapper(PT_STOP, GetID());
+  assert(false);
+//  return PtraceWrapper(PT_STOP, GetID());
+  Status error;
+  return error;
 }
 
 Status NativeProcessHaiku::Kill() {
@@ -628,44 +655,45 @@ Status NativeProcessHaiku::PopulateMemoryRegionCache() {
     return Status();
   }
 
-  struct kinfo_vmentry *vm;
+  assert(false);
+//  struct kinfo_vmentry *vm;
   size_t count, i;
-  vm = kinfo_getvmmap(GetID(), &count);
-  if (vm == NULL) {
+//  vm = kinfo_getvmmap(GetID(), &count);
+//  if (vm == NULL) {
     m_supports_mem_region = LazyBool::eLazyBoolNo;
     Status error;
     error.SetErrorString("not supported");
     return error;
-  }
-  for (i = 0; i < count; i++) {
-    MemoryRegionInfo info;
-    info.Clear();
-    info.GetRange().SetRangeBase(vm[i].kve_start);
-    info.GetRange().SetRangeEnd(vm[i].kve_end);
-    info.SetMapped(MemoryRegionInfo::OptionalBool::eYes);
-
-    if (vm[i].kve_protection & VM_PROT_READ)
-      info.SetReadable(MemoryRegionInfo::OptionalBool::eYes);
-    else
-      info.SetReadable(MemoryRegionInfo::OptionalBool::eNo);
-
-    if (vm[i].kve_protection & VM_PROT_WRITE)
-      info.SetWritable(MemoryRegionInfo::OptionalBool::eYes);
-    else
-      info.SetWritable(MemoryRegionInfo::OptionalBool::eNo);
-
-    if (vm[i].kve_protection & VM_PROT_EXECUTE)
-      info.SetExecutable(MemoryRegionInfo::OptionalBool::eYes);
-    else
-      info.SetExecutable(MemoryRegionInfo::OptionalBool::eNo);
-
-    if (vm[i].kve_path[0])
-      info.SetName(vm[i].kve_path);
-
-    m_mem_region_cache.emplace_back(info,
-                                    FileSpec(info.GetName().GetCString()));
-  }
-  free(vm);
+//  }
+//  for (i = 0; i < count; i++) {
+//    MemoryRegionInfo info;
+//    info.Clear();
+//    info.GetRange().SetRangeBase(vm[i].kve_start);
+//    info.GetRange().SetRangeEnd(vm[i].kve_end);
+//    info.SetMapped(MemoryRegionInfo::OptionalBool::eYes);
+//
+//    if (vm[i].kve_protection & VM_PROT_READ)
+//      info.SetReadable(MemoryRegionInfo::OptionalBool::eYes);
+//    else
+//      info.SetReadable(MemoryRegionInfo::OptionalBool::eNo);
+//
+//    if (vm[i].kve_protection & VM_PROT_WRITE)
+//      info.SetWritable(MemoryRegionInfo::OptionalBool::eYes);
+//    else
+//      info.SetWritable(MemoryRegionInfo::OptionalBool::eNo);
+//
+//    if (vm[i].kve_protection & VM_PROT_EXECUTE)
+//      info.SetExecutable(MemoryRegionInfo::OptionalBool::eYes);
+//    else
+//      info.SetExecutable(MemoryRegionInfo::OptionalBool::eNo);
+//
+//    if (vm[i].kve_path[0])
+//      info.SetName(vm[i].kve_path);
+//
+//    m_mem_region_cache.emplace_back(info,
+//                                    FileSpec(info.GetName().GetCString()));
+//  }
+//  free(vm);
 
   if (m_mem_region_cache.empty()) {
     // No entries after attempting to read them.  This shouldn't happen. Assume
@@ -740,32 +768,33 @@ void NativeProcessHaiku::SigchldHandler() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   // Process all pending waitpid notifications.
   int status;
-  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, waitpid, GetID(), &status,
-                                                 WALLSIG | WNOHANG);
-
-  if (wait_pid == 0)
-    return; // We are done.
-
-  if (wait_pid == -1) {
-    Status error(errno, eErrorTypePOSIX);
-    LLDB_LOG(log, "waitpid ({0}, &status, _) failed: {1}", GetID(), error);
-  }
+  assert(false);
+//  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, waitpid, GetID(), &status,
+//                                                 WALLSIG | WNOHANG);
+//
+//  if (wait_pid == 0)
+//    return; // We are done.
+//
+//  if (wait_pid == -1) {
+//    Status error(errno, eErrorTypePOSIX);
+//    LLDB_LOG(log, "waitpid ({0}, &status, _) failed: {1}", GetID(), error);
+//  }
 
   WaitStatus wait_status = WaitStatus::Decode(status);
-  bool exited = wait_status.type == WaitStatus::Exit ||
-                (wait_status.type == WaitStatus::Signal &&
-                 wait_pid == static_cast<::pid_t>(GetID()));
-
-  LLDB_LOG(log,
-           "waitpid ({0}, &status, _) => pid = {1}, status = {2}, exited = {3}",
-           GetID(), wait_pid, status, exited);
-
-  if (exited)
-    MonitorExited(wait_pid, wait_status);
-  else {
-    assert(wait_status.type == WaitStatus::Stop);
-    MonitorCallback(wait_pid, wait_status.status);
-  }
+//  bool exited = wait_status.type == WaitStatus::Exit ||
+//                (wait_status.type == WaitStatus::Signal &&
+//                 wait_pid == static_cast<::pid_t>(GetID()));
+//
+//  LLDB_LOG(log,
+//           "waitpid ({0}, &status, _) => pid = {1}, status = {2}, exited = {3}",
+//           GetID(), wait_pid, status, exited);
+//
+//  if (exited)
+//    MonitorExited(wait_pid, wait_status);
+//  else {
+//    assert(wait_status.type == WaitStatus::Stop);
+//    MonitorCallback(wait_pid, wait_status.status);
+//  }
 }
 
 bool NativeProcessHaiku::HasThreadNoLock(lldb::tid_t thread_id) {
@@ -816,16 +845,17 @@ void NativeProcessHaiku::RemoveThread(lldb::tid_t thread_id) {
 Status NativeProcessHaiku::Attach() {
   // Attach to the requested process.
   // An attach will cause the thread to stop with a SIGSTOP.
-  Status status = PtraceWrapper(PT_ATTACH, m_pid);
+  assert(false);
+  Status status;// = PtraceWrapper(PT_ATTACH, m_pid);
   if (status.Fail())
     return status;
 
   int wstatus;
   // Need to use WALLSIG otherwise we receive an error with errno=ECHLD At this
   // point we should have a thread stopped if waitpid succeeds.
-  if ((wstatus = llvm::sys::RetryAfterSignal(-1, waitpid, m_pid, nullptr,
-                                             WALLSIG)) < 0)
-    return Status(errno, eErrorTypePOSIX);
+//  if ((wstatus = llvm::sys::RetryAfterSignal(-1, waitpid, m_pid, nullptr,
+//                                             WALLSIG)) < 0)
+//    return Status(errno, eErrorTypePOSIX);
 
   // Initialize threads and tracing status
   // NB: this needs to be called before we set thread state
@@ -845,25 +875,26 @@ Status NativeProcessHaiku::Attach() {
 Status NativeProcessHaiku::ReadMemory(lldb::addr_t addr, void *buf,
                                        size_t size, size_t &bytes_read) {
   unsigned char *dst = static_cast<unsigned char *>(buf);
-  struct ptrace_io_desc io;
+  assert(false);
+//  struct ptrace_io_desc io;
 
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_MEMORY));
   LLDB_LOG(log, "addr = {0}, buf = {1}, size = {2}", addr, buf, size);
 
   bytes_read = 0;
-  io.piod_op = PIOD_READ_D;
-  io.piod_len = size;
+//  io.piod_op = PIOD_READ_D;
+//  io.piod_len = size;
 
   do {
-    io.piod_offs = (void *)(addr + bytes_read);
-    io.piod_addr = dst + bytes_read;
+//    io.piod_offs = (void *)(addr + bytes_read);
+//    io.piod_addr = dst + bytes_read;
 
-    Status error = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
-    if (error.Fail() || io.piod_len == 0)
+    Status error;// = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
+    if (error.Fail())// || io.piod_len == 0)
       return error;
 
-    bytes_read += io.piod_len;
-    io.piod_len = size - bytes_read;
+//    bytes_read += io.piod_len;
+//    io.piod_len = size - bytes_read;
   } while (bytes_read < size);
 
   return Status();
@@ -873,26 +904,27 @@ Status NativeProcessHaiku::WriteMemory(lldb::addr_t addr, const void *buf,
                                         size_t size, size_t &bytes_written) {
   const unsigned char *src = static_cast<const unsigned char *>(buf);
   Status error;
-  struct ptrace_io_desc io;
+  assert(false);
+//  struct ptrace_io_desc io;
 
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_MEMORY));
   LLDB_LOG(log, "addr = {0}, buf = {1}, size = {2}", addr, buf, size);
 
   bytes_written = 0;
-  io.piod_op = PIOD_WRITE_D;
-  io.piod_len = size;
+//  io.piod_op = PIOD_WRITE_D;
+//  io.piod_len = size;
 
   do {
-    io.piod_addr =
-        const_cast<void *>(static_cast<const void *>(src + bytes_written));
-    io.piod_offs = (void *)(addr + bytes_written);
+//    io.piod_addr =
+//        const_cast<void *>(static_cast<const void *>(src + bytes_written));
+//    io.piod_offs = (void *)(addr + bytes_written);
 
-    Status error = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
-    if (error.Fail() || io.piod_len == 0)
+    Status error;// = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
+    if (error.Fail())// || io.piod_len == 0)
       return error;
 
-    bytes_written += io.piod_len;
-    io.piod_len = size - bytes_written;
+//    bytes_written += io.piod_len;
+//    io.piod_len = size - bytes_written;
   } while (bytes_written < size);
 
   return error;
@@ -907,38 +939,40 @@ NativeProcessHaiku::GetAuxvData() const {
    * ptrace(2) returns the whole AUXV including extra fiels after AT_NULL this
    * information isn't needed.
    */
-  size_t auxv_size = 100 * sizeof(AuxInfo);
+  assert(false);
+//  size_t auxv_size = 100 * sizeof(AuxInfo);
+//
+//  ErrorOr<std::unique_ptr<WritableMemoryBuffer>> buf =
+//      llvm::WritableMemoryBuffer::getNewMemBuffer(auxv_size);
 
-  ErrorOr<std::unique_ptr<WritableMemoryBuffer>> buf =
-      llvm::WritableMemoryBuffer::getNewMemBuffer(auxv_size);
+//  struct ptrace_io_desc io;
+//  io.piod_op = PIOD_READ_AUXV;
+//  io.piod_offs = 0;
+//  io.piod_addr = static_cast<void *>(buf.get()->getBufferStart());
+//  io.piod_len = auxv_size;
 
-  struct ptrace_io_desc io;
-  io.piod_op = PIOD_READ_AUXV;
-  io.piod_offs = 0;
-  io.piod_addr = static_cast<void *>(buf.get()->getBufferStart());
-  io.piod_len = auxv_size;
+  Status error; // = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
 
-  Status error = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
-
-  if (error.Fail())
+//  if (error.Fail())
     return std::error_code(error.GetError(), std::generic_category());
 
-  if (io.piod_len < 1)
-    return std::error_code(ECANCELED, std::generic_category());
-
-  return std::move(buf);
+//  if (io.piod_len < 1)
+//    return std::error_code(ECANCELED, std::generic_category());
+//
+//  return std::move(buf);
 }
 
 Status NativeProcessHaiku::SetupTrace() {
   // Enable event reporting
-  ptrace_event_t events;
-  Status status =
-      PtraceWrapper(PT_GET_EVENT_MASK, GetID(), &events, sizeof(events));
+  assert(false);
+//  ptrace_event_t events;
+  Status status; // =
+//      PtraceWrapper(PT_GET_EVENT_MASK, GetID(), &events, sizeof(events));
   if (status.Fail())
     return status;
   // TODO: PTRACE_FORK | PTRACE_VFORK | PTRACE_POSIX_SPAWN?
-  events.pe_set_event |= PTRACE_LWP_CREATE | PTRACE_LWP_EXIT;
-  status = PtraceWrapper(PT_SET_EVENT_MASK, GetID(), &events, sizeof(events));
+//  events.pe_set_event |= PTRACE_LWP_CREATE | PTRACE_LWP_EXIT;
+//  status = PtraceWrapper(PT_SET_EVENT_MASK, GetID(), &events, sizeof(events));
   if (status.Fail())
     return status;
 
@@ -950,27 +984,28 @@ Status NativeProcessHaiku::ReinitializeThreads() {
   m_threads.clear();
 
   // Initialize new thread
-#ifdef PT_LWPSTATUS
-  struct ptrace_lwpstatus info = {};
-  int op = PT_LWPNEXT;
-#else
-  struct ptrace_lwpinfo info = {};
-  int op = PT_LWPINFO;
-#endif
+  assert(false);
+//#ifdef PT_LWPSTATUS
+//  struct ptrace_lwpstatus info = {};
+//  int op = PT_LWPNEXT;
+//#else
+//  struct ptrace_lwpinfo info = {};
+//  int op = PT_LWPINFO;
+//#endif
 
-  Status error = PtraceWrapper(op, GetID(), &info, sizeof(info));
+  Status error;// = PtraceWrapper(op, GetID(), &info, sizeof(info));
 
   if (error.Fail()) {
     return error;
   }
   // Reinitialize from scratch threads and register them in process
-  while (info.pl_lwpid != 0) {
-    AddThread(info.pl_lwpid);
-    error = PtraceWrapper(op, GetID(), &info, sizeof(info));
-    if (error.Fail()) {
-      return error;
-    }
-  }
+//  while (info.pl_lwpid != 0) {
+//    AddThread(info.pl_lwpid);
+//    error = PtraceWrapper(op, GetID(), &info, sizeof(info));
+//    if (error.Fail()) {
+//      return error;
+//    }
+//  }
 
   return error;
 }

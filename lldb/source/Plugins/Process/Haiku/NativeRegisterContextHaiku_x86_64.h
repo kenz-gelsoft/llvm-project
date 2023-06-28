@@ -14,8 +14,10 @@
 // clang-format off
 #include <sys/param.h>
 #include <sys/types.h>
+#ifndef __HAIKU__
 #include <sys/ptrace.h>
 #include <machine/reg.h>
+#endif
 // clang-format on
 
 #include <array>
@@ -66,9 +68,9 @@ private:
   };
 
   // Private member variables.
-  std::array<uint8_t, sizeof(struct reg)> m_gpr;
-  std::array<uint8_t, sizeof(struct xstate)> m_xstate;
-  std::array<uint8_t, sizeof(struct dbreg)> m_dbr;
+//  std::array<uint8_t, sizeof(struct reg)> m_gpr;
+//  std::array<uint8_t, sizeof(struct xstate)> m_xstate;
+//  std::array<uint8_t, sizeof(struct dbreg)> m_dbr;
   std::array<size_t, MaxRegularRegSet + 1> m_regset_offsets;
 
   llvm::Optional<RegSetKind> GetSetForNativeRegNum(uint32_t reg_num) const;

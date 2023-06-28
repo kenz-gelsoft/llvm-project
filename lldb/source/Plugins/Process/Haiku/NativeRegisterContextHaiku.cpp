@@ -17,7 +17,9 @@ using namespace lldb_private::process_haiku;
 
 // clang-format off
 #include <sys/types.h>
+#ifndef __HAIKU__
 #include <sys/ptrace.h>
+#endif
 // clang-format on
 
 Status NativeRegisterContextHaiku::DoRegisterSet(int ptrace_req, void *buf) {

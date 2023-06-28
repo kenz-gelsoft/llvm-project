@@ -20,14 +20,18 @@
 
 // clang-format off
 #include <sys/types.h>
+#ifndef __HAIKU__
 #include <sys/ptrace.h>
+#endif
 // clang-format on
 
 #include <sstream>
 
 // clang-format off
 #include <sys/types.h>
+#ifndef __HAIKU__
 #include <sys/sysctl.h>
+#endif
 // clang-format on
 
 using namespace lldb;
@@ -42,32 +46,35 @@ NativeRegisterContextHaiku::CreateHostNativeRegisterContextHaiku(process.GetArch
 ), m_stop_description() {}
 
 Status NativeThreadHaiku::Resume() {
-  Status ret = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
-                                                  nullptr, GetID());
+  assert(false);
+  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
+//                                                  nullptr, GetID());
   if (!ret.Success())
     return ret;
-  ret = NativeProcessHaiku::PtraceWrapper(PT_CLEARSTEP, m_process.GetID(),
-                                           nullptr, GetID());
+//  ret = NativeProcessHaiku::PtraceWrapper(PT_CLEARSTEP, m_process.GetID(),
+//                                           nullptr, GetID());
   if (ret.Success())
     SetRunning();
   return ret;
 }
 
 Status NativeThreadHaiku::SingleStep() {
-  Status ret = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
-                                                  nullptr, GetID());
+  assert(false);
+  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
+//                                                  nullptr, GetID());
   if (!ret.Success())
     return ret;
-  ret = NativeProcessHaiku::PtraceWrapper(PT_SETSTEP, m_process.GetID(),
-                                           nullptr, GetID());
+//  ret = NativeProcessHaiku::PtraceWrapper(PT_SETSTEP, m_process.GetID(),
+//                                           nullptr, GetID());
   if (ret.Success())
     SetStepping();
   return ret;
 }
 
 Status NativeThreadHaiku::Suspend() {
-  Status ret = NativeProcessHaiku::PtraceWrapper(PT_SUSPEND, m_process.GetID(),
-                                                  nullptr, GetID());
+  assert(false);
+  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_SUSPEND, m_process.GetID(),
+//                                                  nullptr, GetID());
   if (ret.Success())
     SetStopped();
   return ret;
@@ -156,6 +163,8 @@ void NativeThreadHaiku::SetStepping() {
 std::string NativeThreadHaiku::GetName() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD));
 
+  assert(false);
+#ifndef __HAIKU__
 #ifdef PT_LWPSTATUS
   struct ptrace_lwpstatus info = {};
   info.pl_lwpid = m_tid;
@@ -195,6 +204,7 @@ std::string NativeThreadHaiku::GetName() {
   LLDB_LOG(log, "unable to find lwp {0} in LWP infos", m_tid);
   return "";
 #endif
+#endif // __HAIKU__
 }
 
 lldb::StateType NativeThreadHaiku::GetState() { return m_state; }
