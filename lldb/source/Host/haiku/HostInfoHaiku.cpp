@@ -30,6 +30,7 @@ llvm::VersionTuple HostInfoHaiku::GetOSVersion() {
 }
 
 bool HostInfoHaiku::GetOSBuildString(std::string &s) {
+  assert(false);
 //  int mib[2] = {CTL_KERN, KERN_OSREV};
 //  char osrev_str[12];
 //  uint32_t osrev = 0;

@@ -47,11 +47,13 @@ static bool
 GetHaikuProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
                       ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
+    assert(false);
 //    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ARGS,
 //                  (int)process_info.GetProcessID()};
 
     char arg_data[8192];
     size_t arg_data_size = sizeof(arg_data);
+    assert(false);
 //    if (::sysctl(mib, 4, arg_data, &arg_data_size, NULL, 0) == 0) {
     if (true) {
       DataExtractor data(arg_data, arg_data_size, endian::InlHostByteOrder(),
@@ -103,10 +105,12 @@ static bool GetHaikuProcessCPUType(ProcessInstanceInfo &process_info) {
 }
 
 static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
+  assert(false);
 //  struct kinfo_proc proc_kinfo;
 //  size_t proc_kinfo_size;
 
   if (process_info.ProcessIDIsValid()) {
+    assert(false);
 //    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID,
 //                  (int)process_info.GetProcessID()};
 //    proc_kinfo_size = sizeof(struct kinfo_proc);
@@ -132,11 +136,13 @@ static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
 
 uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
                                  ProcessInstanceInfoList &process_infos) {
+  assert(false);
 //  std::vector<struct kinfo_proc> kinfos;
 //
 //  int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
 
   size_t pid_data_size = 0;
+  assert(false);
 //  if (::sysctl(mib, 3, NULL, &pid_data_size, NULL, 0) != 0)
     return 0;
 

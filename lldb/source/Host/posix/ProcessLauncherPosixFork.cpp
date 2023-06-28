@@ -150,6 +150,7 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
         close(fd);
 
     // Start tracing this child that is about to exec.
+    assert(false);
 #ifndef __HAIKU__ // TODO: impl
     if (ptrace(PT_TRACE_ME, 0, nullptr, 0) == -1)
 #endif

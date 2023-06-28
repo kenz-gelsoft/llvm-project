@@ -221,6 +221,7 @@ PlatformHaiku::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
 }
 
 bool PlatformHaiku::CanDebugProcess() {
+  return false;
   if (IsHost()) {
     return true;
   } else {
