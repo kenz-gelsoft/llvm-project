@@ -11,7 +11,7 @@ add_lldb_library(lldbPluginProcessHaiku
     lldbUtility
     lldbPluginProcessPOSIX
     lldbPluginProcessUtility
-    util
+    #util
   LINK_COMPONENTS
     Support
   )

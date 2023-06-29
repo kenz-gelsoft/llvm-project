@@ -19,6 +19,10 @@ if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
   list(APPEND LLDB_PLUGINS lldbPluginProcessNetBSD)
 endif()
 
+if(CMAKE_SYSTEM_NAME MATCHES "Haiku")
+  list(APPEND LLDB_PLUGINS lldbPluginProcessHaiku)
+endif()
+
 if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   list(APPEND LLDB_PLUGINS lldbPluginObjectFileMachO)
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")

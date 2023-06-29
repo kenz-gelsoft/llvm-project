@@ -168,7 +168,7 @@ int main_platform(int argc, char *argv[]) {
 
   std::string short_options(OptionParser::GetShortOptionString(g_long_options));
 
-#if __GLIBC__
+#if __GLIBC__ || defined(__HAIKU__)
   optind = 0;
 #else
   optreset = 1;
