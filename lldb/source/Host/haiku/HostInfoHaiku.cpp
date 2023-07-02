@@ -30,20 +30,23 @@ llvm::VersionTuple HostInfoHaiku::GetOSVersion() {
 }
 
 bool HostInfoHaiku::GetOSBuildString(std::string &s) {
-  assert(false);
-//  int mib[2] = {CTL_KERN, KERN_OSREV};
-//  char osrev_str[12];
-//  uint32_t osrev = 0;
-//  size_t osrev_len = sizeof(osrev);
-//
-//  if (::sysctl(mib, 2, &osrev, &osrev_len, NULL, 0) == 0) {
-//    ::snprintf(osrev_str, sizeof(osrev_str), "%-8.8u", osrev);
-//    s.assign(osrev_str);
-//    return true;
-//  }
+  struct utsname un;
 
+  ::memset(&un, 0, sizeof(utsname));
   s.clear();
-  return false;
+
+  if (uname(&un) < 0)
+    return false;
+
+  // Use the first hrevNNNNN part of the uname version
+  // (c.f. `hrev57126 Jul  1 2023 06:21:19`)
+  // as the OS build string.
+  char *sep = strchr(un.version, ' ');
+  if (sep == NULL)
+    return false;
+  s.assign(un.version, sep);
+
+  return true;
 }
 
 bool HostInfoHaiku::GetOSKernelDescription(std::string &s) {
