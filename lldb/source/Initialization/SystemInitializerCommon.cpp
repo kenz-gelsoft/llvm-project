@@ -18,7 +18,7 @@
 #include "lldb/Utility/Timer.h"
 #include "lldb/lldb-private.h"
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__HAIKU__)
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
 #endif
 
@@ -135,7 +135,7 @@ llvm::Error SystemInitializerCommon::Initialize() {
 
   process_gdb_remote::ProcessGDBRemoteLog::Initialize();
 
-#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__HAIKU__)
   ProcessPOSIXLog::Initialize();
 #endif
 #if defined(_WIN32)
