@@ -43,6 +43,8 @@
 #include "Plugins/Process/FreeBSDRemote/NativeProcessFreeBSD.h"
 #elif defined(__NetBSD__)
 #include "Plugins/Process/NetBSD/NativeProcessNetBSD.h"
+#elif defined(__HAIKU__)
+#include "Plugins/Process/Haiku/NativeProcessHaiku.h"
 #elif defined(_WIN32)
 #include "Plugins/Process/Windows/Common/NativeProcessWindows.h"
 #endif
@@ -68,6 +70,8 @@ typedef process_linux::NativeProcessLinux::Factory NativeProcessFactory;
 typedef process_freebsd::NativeProcessFreeBSD::Factory NativeProcessFactory;
 #elif defined(__NetBSD__)
 typedef process_netbsd::NativeProcessNetBSD::Factory NativeProcessFactory;
+#elif defined(__HAIKU__)
+typedef process_haiku::NativeProcessHaiku::Factory NativeProcessFactory;
 #elif defined(_WIN32)
 typedef NativeProcessWindows::Factory NativeProcessFactory;
 #else
