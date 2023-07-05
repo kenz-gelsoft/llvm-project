@@ -3,6 +3,7 @@ add_lldb_library(lldbPluginProcessUtility
   DynamicRegisterInfo.cpp
   FreeBSDSignals.cpp
   GDBRemoteSignals.cpp
+  HaikuSignals.cpp
   HistoryThread.cpp
   HistoryUnwind.cpp
   InferiorCallPOSIX.cpp
