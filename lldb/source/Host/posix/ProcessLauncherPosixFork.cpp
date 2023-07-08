@@ -16,7 +16,9 @@
 #include "llvm/Support/Errno.h"
 
 #include <limits.h>
-#ifndef __HAIKU__
+#ifdef __HAIKU__
+#include <private/debug/debug_support.h>
+#else
 #include <sys/ptrace.h>
 #endif
 #include <sys/wait.h>
@@ -90,6 +92,26 @@ static void DupDescriptor(int error_fd, const FileSpec &file_spec, int fd,
   return;
 }
 
+class dbg_printer
+{
+  FILE *fp;
+public:
+  dbg_printer(const char *name) :
+    fp(fopen(name, "w+"))
+  {}
+  
+  ~dbg_printer()
+  {
+    fclose(fp);
+  }
+  
+  void print(const char *text)
+  {
+    fprintf(fp, "%s\n", text);
+    fflush(fp);
+  }  
+};
+
 static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
                                               const ProcessLaunchInfo &info) {
   if (info.GetFlags().Test(eLaunchFlagLaunchInSeparateProcessGroup)) {
@@ -150,14 +172,20 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
         close(fd);
 
     // Start tracing this child that is about to exec.
-    assert(false);
-#ifndef __HAIKU__ // TODO: impl
+#ifdef __HAIKU__
+    dbg_printer dbg("child.txt");
+    dbg.print("cf9");
+    wait_for_debugger();
+    dbg.print("cf10");
+#else
     if (ptrace(PT_TRACE_ME, 0, nullptr, 0) == -1)
-#endif
       ExitWithError(error_fd, "ptrace");
+#endif
   }
 
   // Execute.  We should never return...
+  dbg_printer dbg("child.txt");
+  dbg.print("cf11");
   execve(argv[0], const_cast<char *const *>(argv), envp);
 
 #if defined(__linux__)
@@ -177,8 +205,16 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
 
   // ...unless exec fails.  In which case we definitely need to end the child
   // here.
+  dbg.print("cf12");
   ExitWithError(error_fd, "execve");
 }
+
+struct haiku_debugger
+{
+  port_id debugger_port;
+  port_id nub_port;
+};
+static haiku_debugger s_debugger;
 
 HostProcess
 ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
@@ -208,16 +244,41 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
 
   // parent process
 
+  // fork()ed pid is a thread_id of Haiku.
+  thread_info thread;
+  if (get_thread_info(pid, &thread) != B_OK)
+    return HostProcess();
+  
+  s_debugger.debugger_port = create_port(100, "debugger port");
+  if (s_debugger.debugger_port < 0)
+    return HostProcess();
+  
+  s_debugger.nub_port = install_team_debugger(thread.team,
+                                              s_debugger.debugger_port);
+  if (s_debugger.nub_port < 0)
+    return HostProcess();
+
+  dbg_printer dbg("parent.txt");
   pipe.CloseWriteFileDescriptor();
+  dbg.print("parent7");
   char buf[1000];
-  int r = read(pipe.GetReadFileDescriptor(), buf, sizeof buf);
+  int r = 0;
+  // read() with large buffer blocks until a SIGTRAP signal sent by
+  // execve() with prior ptrace(PT_TRACE_ME) call on other systems.
+  // but Haiku doesn't have that behavior.
+//  int r = read(pipe.GetReadFileDescriptor(), buf, sizeof buf);
+  dbg.print("parent8");
 
-  if (r == 0)
+  if (r == 0) {
+    dbg.print("parent9");
     return HostProcess(pid); // No error. We're done.
+  }
 
+  dbg.print("parent10");
   error.SetErrorString(buf);
 
   llvm::sys::RetryAfterSignal(-1, waitpid, pid, nullptr, 0);
+  dbg.print("parent11");
 
   return HostProcess();
 }
