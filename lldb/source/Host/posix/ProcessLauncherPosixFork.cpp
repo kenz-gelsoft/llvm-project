@@ -97,7 +97,7 @@ class dbg_printer
   FILE *fp;
 public:
   dbg_printer(const char *name) :
-    fp(fopen(name, "w+"))
+    fp(fopen(name, "a+"))
   {}
   
   ~dbg_printer()
@@ -209,12 +209,47 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
   ExitWithError(error_fd, "execve");
 }
 
-struct haiku_debugger
+class HaikuDebugger
 {
   port_id debugger_port;
   port_id nub_port;
+
+public:
+  int InstallToTeam(thread_id pid, dbg_printer& dbg) {
+    // fork()ed pid is a thread_id of Haiku.
+    thread_info thread;
+    status_t result = get_thread_info(pid, &thread);
+    if (result != B_OK)
+      return result;
+  
+    debugger_port = create_port(100, "debugger port");
+    if (debugger_port < 0)
+      return debugger_port;
+  
+    nub_port = install_team_debugger(thread.team,
+                                     debugger_port);
+    if (nub_port < 0)
+      return nub_port;
+
+    dbg.print("parent5");
+    debug_nub_set_team_flags message;
+    message.flags = B_TEAM_DEBUG_THREADS | B_TEAM_DEBUG_IMAGES
+        | B_TEAM_DEBUG_POST_SYSCALL | B_TEAM_DEBUG_SIGNALS
+        | B_TEAM_DEBUG_TEAM_CREATION;
+    do {
+      result = write_port(nub_port, B_DEBUG_MESSAGE_SET_TEAM_FLAGS,
+                          &message, sizeof(message));
+    } while (result == B_INTERRUPTED);
+    if (result != B_OK) {
+      dbg.print("parent6");
+      return result;
+    }
+    
+    return B_OK;
+  }
 };
-static haiku_debugger s_debugger;
+static HaikuDebugger s_debugger;
+
 
 HostProcess
 ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
@@ -244,30 +279,19 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
 
   // parent process
 
-  // fork()ed pid is a thread_id of Haiku.
-  thread_info thread;
-  if (get_thread_info(pid, &thread) != B_OK)
-    return HostProcess();
-  
-  s_debugger.debugger_port = create_port(100, "debugger port");
-  if (s_debugger.debugger_port < 0)
-    return HostProcess();
-  
-  s_debugger.nub_port = install_team_debugger(thread.team,
-                                              s_debugger.debugger_port);
-  if (s_debugger.nub_port < 0)
-    return HostProcess();
-
-  dbg_printer dbg("parent.txt");
-  pipe.CloseWriteFileDescriptor();
-  dbg.print("parent7");
-  char buf[1000];
   int r = 0;
-  // read() with large buffer blocks until a SIGTRAP signal sent by
-  // execve() with prior ptrace(PT_TRACE_ME) call on other systems.
-  // but Haiku doesn't have that behavior.
-//  int r = read(pipe.GetReadFileDescriptor(), buf, sizeof buf);
-  dbg.print("parent8");
+  char buf[1000];
+  dbg_printer dbg("parent.txt");
+  if (launch_info.GetFlags().Test(eLaunchFlagDebug)) {
+    s_debugger.InstallToTeam(pid, dbg);
+  } else {
+    pipe.CloseWriteFileDescriptor();
+    // read() with large buffer blocks until a SIGTRAP signal sent by
+    // execve() with prior ptrace(PT_TRACE_ME) call on other systems.
+    // but Haiku doesn't have that behavior.
+    r = read(pipe.GetReadFileDescriptor(), buf, sizeof buf);
+    dbg.print("parent8");
+  }
 
   if (r == 0) {
     dbg.print("parent9");
