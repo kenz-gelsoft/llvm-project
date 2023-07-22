@@ -14,6 +14,7 @@
 //#include <sys/ptrace.h>
 //#include <sys/sysctl.h>
 //#include <sys/user.h>
+#include <OS.h>
 
 #include <stdio.h>
 
@@ -47,16 +48,13 @@ static bool
 GetHaikuProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
                       ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
-    assert(false);
-//    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_ARGS,
-//                  (int)process_info.GetProcessID()};
-
-    char arg_data[8192];
-    size_t arg_data_size = sizeof(arg_data);
-    assert(false);
-//    if (::sysctl(mib, 4, arg_data, &arg_data_size, NULL, 0) == 0) {
-    if (true) {
-      DataExtractor data(arg_data, arg_data_size, endian::InlHostByteOrder(),
+    // FIXME: team_info.args hold just 64 bytes only.
+    thread_info thread;
+    team_info team;
+    size_t arg_data_size = sizeof(team.args);
+    if (::get_thread_info(process_info.GetProcessID(), &thread) == B_OK &&
+        ::get_team_info(thread.team, &team) == B_OK) {
+      DataExtractor data(team.args, arg_data_size, endian::InlHostByteOrder(),
                          sizeof(void *));
       lldb::offset_t offset = 0;
       const char *cstr;
