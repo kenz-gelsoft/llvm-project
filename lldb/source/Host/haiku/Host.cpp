@@ -122,7 +122,6 @@ static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
 
 uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
                                  ProcessInstanceInfoList &process_infos) {
-  size_t pid_data_size = 0;
   // Add a few extra in case a few more show up
   bool all_users = match_info.GetMatchAllUsers();
   const ::pid_t our_pid = getpid();
@@ -130,24 +129,24 @@ uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
   int32 cookie = 0;
   team_info tinfo;
   while (get_next_team_info(&cookie, &tinfo) == B_OK) {
-   const bool tinfo_user_matches = (all_users || (tinfo.real_uid == our_uid) ||
-                                    // Special case, if lldb is being run as
-                                    // root we can attach to anything.
-                                    (our_uid == 0));
+    const bool tinfo_user_matches = (all_users || (tinfo.real_uid == our_uid) ||
+                                     // Special case, if lldb is being run as
+                                     // root we can attach to anything.
+                                     (our_uid == 0));
 
-   if (tinfo_user_matches == false || // Make sure the user is acceptable
-       tinfo.team == our_pid ||       // Skip this process
-       tinfo.team == 0 ||             // Skip kernel (kernel pid is zero)
-       tinfo.nub_port != -1)          // Being debugged?
-     continue;
+    if (tinfo_user_matches == false || // Make sure the user is acceptable
+        tinfo.team == our_pid ||       // Skip this process
+        tinfo.team == 0 ||             // Skip kernel (kernel pid is zero)
+        tinfo.debugger_nub_port != -1) // Being debugged?
+      continue;
 
     ProcessInstanceInfo process_info;
-   process_info.SetProcessID(tinfo.team);
-   process_info.SetParentProcessID(tinfo.parent);
-   process_info.SetUserID(kinfo.real_uid);
-   process_info.SetGroupID(kinfo.real_gid);
-   process_info.SetEffectiveUserID(kinfo.uid);
-   process_info.SetEffectiveGroupID(kinfo.gid);
+    process_info.SetProcessID(tinfo.team);
+    process_info.SetParentProcessID(tinfo.parent);
+    process_info.SetUserID(tinfo.real_uid);
+    process_info.SetGroupID(tinfo.real_gid);
+    process_info.SetEffectiveUserID(tinfo.uid);
+    process_info.SetEffectiveGroupID(tinfo.gid);
 
     // Make sure our info matches before we go fetch the name and cpu type
     if (match_info.Matches(process_info) &&
@@ -156,7 +155,7 @@ uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
       if (match_info.Matches(process_info))
         process_infos.push_back(process_info);
     }
- }
+  }
 
   return process_infos.size();
 }
