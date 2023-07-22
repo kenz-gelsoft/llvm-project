@@ -122,53 +122,32 @@ static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
 
 uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
                                  ProcessInstanceInfoList &process_infos) {
-  assert(false);
-//  std::vector<struct kinfo_proc> kinfos;
-//
-//  int mib[3] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
-
   size_t pid_data_size = 0;
-  assert(false);
-//  if (::sysctl(mib, 3, NULL, &pid_data_size, NULL, 0) != 0)
-    return 0;
-
   // Add a few extra in case a few more show up
-//  const size_t estimated_pid_count =
-//      (pid_data_size / sizeof(struct kinfo_proc)) + 10;
-//
-//  kinfos.resize(estimated_pid_count);
-//  pid_data_size = kinfos.size() * sizeof(struct kinfo_proc);
-//
-//  if (::sysctl(mib, 3, &kinfos[0], &pid_data_size, NULL, 0) != 0)
-    return 0;
-
-//  const size_t actual_pid_count = (pid_data_size / sizeof(struct kinfo_proc));
-
   bool all_users = match_info.GetMatchAllUsers();
   const ::pid_t our_pid = getpid();
   const uid_t our_uid = getuid();
-//  for (size_t i = 0; i < actual_pid_count; i++) {
-//    const struct kinfo_proc &kinfo = kinfos[i];
-//    const bool kinfo_user_matches = (all_users || (kinfo.p_ruid == our_uid) ||
-//                                     // Special case, if lldb is being run as
-//                                     // root we can attach to anything.
-//                                     (our_uid == 0));
-//
-//    if (kinfo_user_matches == false || // Make sure the user is acceptable
-//        kinfo.p_pid == our_pid ||     // Skip this process
-//        kinfo.p_pid == 0 ||           // Skip kernel (kernel pid is zero)
-//        kinfo.p_stat == SZOMB ||      // Zombies are bad, they like brains...
-//        kinfo.p_psflags & PS_TRACED || // Being debugged?
-//        kinfo.p_flag & P_WEXIT)       // Working on exiting
-//      continue;
-//
+  int32 cookie = 0;
+  team_info tinfo;
+  while (get_next_team_info(&cookie, &tinfo) == B_OK) {
+   const bool tinfo_user_matches = (all_users || (tinfo.real_uid == our_uid) ||
+                                    // Special case, if lldb is being run as
+                                    // root we can attach to anything.
+                                    (our_uid == 0));
+
+   if (tinfo_user_matches == false || // Make sure the user is acceptable
+       tinfo.team == our_pid ||       // Skip this process
+       tinfo.team == 0 ||             // Skip kernel (kernel pid is zero)
+       tinfo.nub_port != -1)          // Being debugged?
+     continue;
+
     ProcessInstanceInfo process_info;
-//    process_info.SetProcessID(kinfo.p_pid);
-//    process_info.SetParentProcessID(kinfo.p_ppid);
-//    process_info.SetUserID(kinfo.p_ruid);
-//    process_info.SetGroupID(kinfo.p_rgid);
-//    process_info.SetEffectiveUserID(kinfo.p_svuid);
-//    process_info.SetEffectiveGroupID(kinfo.p_svgid);
+   process_info.SetProcessID(tinfo.team);
+   process_info.SetParentProcessID(tinfo.parent);
+   process_info.SetUserID(kinfo.real_uid);
+   process_info.SetGroupID(kinfo.real_gid);
+   process_info.SetEffectiveUserID(kinfo.uid);
+   process_info.SetEffectiveGroupID(kinfo.gid);
 
     // Make sure our info matches before we go fetch the name and cpu type
     if (match_info.Matches(process_info) &&
@@ -177,7 +156,7 @@ uint32_t Host::FindProcessesImpl(const ProcessInstanceInfoMatch &match_info,
       if (match_info.Matches(process_info))
         process_infos.push_back(process_info);
     }
-//  }
+ }
 
   return process_infos.size();
 }
