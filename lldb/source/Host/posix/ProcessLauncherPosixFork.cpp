@@ -18,7 +18,6 @@
 #include <limits.h>
 #ifdef __HAIKU__
 #include <private/debug/debug_support.h>
-#include <private/kernel/util/KMessage.h>
 #include <private/system/system_info.h>
 #else
 #include <sys/ptrace.h>
@@ -211,97 +210,6 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
   ExitWithError(error_fd, "execve");
 }
 
-class HaikuDebugger
-{
-  port_id debugger_port;
-  port_id nub_port;
-
-public:
-  int InstallToTeam(thread_id pid, dbg_printer& dbg) {
-    // fork()ed pid is a thread_id of Haiku.
-    thread_info thread;
-    status_t result = get_thread_info(pid, &thread);
-    if (result != B_OK)
-      return result;
-  
-    debugger_port = create_port(100, "debugger port");
-    if (debugger_port < 0)
-      return debugger_port;
-    
-    result = __start_watching_system(-1,
-        B_WATCH_SYSTEM_TEAM_CREATION | B_WATCH_SYSTEM_TEAM_DELETION,
-        debugger_port, 0);
-    if (result != B_OK)
-      return result;
-  
-    nub_port = install_team_debugger(thread.team,
-                                     debugger_port);
-    if (nub_port < 0)
-      return nub_port;
-
-    dbg.print("parent5");
-    {
-      debug_nub_set_team_flags message;
-      message.flags = B_TEAM_DEBUG_THREADS | B_TEAM_DEBUG_IMAGES
-          | B_TEAM_DEBUG_POST_SYSCALL | B_TEAM_DEBUG_SIGNALS
-          | B_TEAM_DEBUG_TEAM_CREATION;
-      do {
-        result = write_port(nub_port, B_DEBUG_MESSAGE_SET_TEAM_FLAGS,
-                            &message, sizeof(message));
-      } while (result == B_INTERRUPTED);
-    }
-    if (result != B_OK) {
-      dbg.print("parent6");
-      return result;
-    }
-    
-    // wait for execve() called.
-    {
-      int32 message_code;
-      char buffer[2048];
-      do {
-        result = read_port(debugger_port, &message_code,
-                           &buffer, sizeof(buffer));
-      } while (result == B_INTERRUPTED);
-      dbg.print("parent10");
-      
-      // parse message
-      KMessage message;
-      result = message.SetTo(buffer);
-      if (result != B_OK) {
-        dbg.print("parent11"); // failed here.
-        return result;
-      }
-    
-      int32 opcode = 0;
-      result = message.FindInt32("opcode", &opcode);
-      if (result != B_OK) {
-        dbg.print("parent12");
-        return result;
-      }
-    
-      team_id team = -1;
-      result = message.FindInt32("team", &team);
-      if (result != B_OK) {
-        dbg.print("parent13");
-        return result;
-      }
-      
-      if (opcode != B_TEAM_EXEC) {
-        dbg.print("parent14");
-        return B_ERROR;
-      }
-      
-      // convert B_TEAM_EXEC message to SIGTRAP.
-      dbg.print("parent15");
-      kill(pid, SIGTRAP);
-    }
-    
-    return B_OK;
-  }
-};
-static HaikuDebugger s_debugger;
-
 
 HostProcess
 ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
@@ -332,9 +240,15 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
   // parent process
 
   dbg_printer dbg("parent.txt");
+#ifdef __HAIKU__
   if (launch_info.GetFlags().Test(eLaunchFlagDebug)) {
-    s_debugger.InstallToTeam(pid, dbg);
+    // wait_for_debugger() blocks reading from pipe.
+    // proceed on debug without reading.
+    pipe.Close();
+    return HostProcess(pid);
   }
+#endif // __HAIKU__
+
   pipe.CloseWriteFileDescriptor();
   char buf[1000];
   int r = read(pipe.GetReadFileDescriptor(), buf, sizeof buf);

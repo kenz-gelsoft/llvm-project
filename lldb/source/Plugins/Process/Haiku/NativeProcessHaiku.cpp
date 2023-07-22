@@ -21,7 +21,9 @@
 // they define some macros which collide with variable names in other modules
 // clang-format off
 #include <sys/types.h>
-#ifndef __HAIKU__
+#ifdef __HAIKU__
+#include <TeamDebugger.h>
+#else
 #include <sys/ptrace.h>
 #include <sys/sysctl.h>
 #endif
@@ -78,16 +80,37 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   }
 
   // Wait for the child process to trap on its call to execve.
-  int wstatus;
-  ::pid_t wpid = llvm::sys::RetryAfterSignal(-1, ::waitpid, pid, &wstatus, 0);
-  assert(wpid == pid);
-  (void)wpid;
-  if (!WIFSTOPPED(wstatus)) {
-    LLDB_LOG(log, "Could not sync with inferior process: wstatus={1}",
-             WaitStatus::Decode(wstatus));
-    return llvm::make_error<StringError>("Could not sync with inferior process",
+  BTeamDebugger team_debugger;
+  status_t error = team_debugger.Install(pid);
+  if (error != B_OK) {
+    LLDB_LOG(log, "Could not install team debugger: error={1}",
+             error);
+    return llvm::make_error<StringError>("Could not install team debugger",
                                          llvm::inconvertibleErrorCode());
   }
+  int32 flags =
+      B_TEAM_DEBUG_THREADS |
+      B_TEAM_DEBUG_IMAGES |
+      B_TEAM_DEBUG_POST_SYSCALL |
+      B_TEAM_DEBUG_SIGNALS |
+      B_TEAM_DEBUG_TEAM_CREATION;
+  error = team_debugger.SetDebuggingFlags(flags);
+  if (error < 0) {
+    LLDB_LOG(log, "Cloud not set team debugging flags: error={1}",
+             error);
+    return llvm::make_error<StringError>("Cloud not set team debugging flags",
+                                         llvm::inconvertibleErrorCode());
+  }
+//   int wstatus;
+//   ::pid_t wpid = llvm::sys::RetryAfterSignal(-1, ::waitpid, pid, &wstatus, 0);
+//   assert(wpid == pid);
+//   (void)wpid;
+//   if (!WIFSTOPPED(wstatus)) {
+//     LLDB_LOG(log, "Could not sync with inferior process: wstatus={1}",
+//              WaitStatus::Decode(wstatus));
+//     return llvm::make_error<StringError>("Could not sync with inferior process",
+//                                          llvm::inconvertibleErrorCode());
+//   }
   LLDB_LOG(log, "inferior started, now in stopped state");
 
   ProcessInstanceInfo Info;
