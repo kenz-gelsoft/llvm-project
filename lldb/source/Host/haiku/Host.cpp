@@ -112,7 +112,6 @@ static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
         return true;
     }
   }
-  }
   process_info.SetParentProcessID(LLDB_INVALID_PROCESS_ID);
   process_info.SetUserID(UINT32_MAX);
   process_info.SetGroupID(UINT32_MAX);
