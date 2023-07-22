@@ -94,7 +94,7 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
       B_TEAM_DEBUG_POST_SYSCALL |
       B_TEAM_DEBUG_SIGNALS |
       B_TEAM_DEBUG_TEAM_CREATION;
-  error = team_debugger.SetDebuggingFlags(flags);
+  error = team_debugger.SetTeamDebuggingFlags(flags);
   if (error < 0) {
     LLDB_LOG(log, "Cloud not set team debugging flags: error={1}",
              error);
