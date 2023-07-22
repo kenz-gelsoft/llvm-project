@@ -42,6 +42,26 @@ using namespace lldb_private;
 using namespace lldb_private::process_haiku;
 using namespace llvm;
 
+class dbg_printer
+{
+  FILE *fp;
+public:
+  dbg_printer(const char *name) :
+    fp(fopen(name, "a+"))
+  {}
+  
+  ~dbg_printer()
+  {
+    fclose(fp);
+  }
+  
+  void print(const char *text)
+  {
+    fprintf(fp, "%s\n", text);
+    fflush(fp);
+  }  
+};
+
 // Simple helper function to ensure flags are enabled on the given file
 // descriptor.
 static Status EnsureFDFlags(int fd, int flags) {
@@ -69,22 +89,30 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
                                      MainLoop &mainloop) const {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
 
+  dbg_printer dbg("np.txt");
+  dbg.print("np0");
+
   Status status;
   ::pid_t pid = ProcessLauncherPosixFork()
                     .LaunchProcess(launch_info, status)
                     .GetProcessId();
   LLDB_LOG(log, "pid = {0:x}", pid);
+  dbg.print("np1");
   if (status.Fail()) {
     LLDB_LOG(log, "failed to launch process: {0}", status);
+    dbg.print("np2");
     return status.ToError();
   }
 
   // Wait for the child process to trap on its call to execve.
+  dbg.print("np3");
   BTeamDebugger team_debugger;
   status_t error = team_debugger.Install(pid);
+  dbg.print("np4");
   if (error != B_OK) {
     LLDB_LOG(log, "Could not install team debugger: error={1}",
              error);
+    dbg.print("np5");
     return llvm::make_error<StringError>("Could not install team debugger",
                                          llvm::inconvertibleErrorCode());
   }
@@ -95,9 +123,11 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
       B_TEAM_DEBUG_SIGNALS |
       B_TEAM_DEBUG_TEAM_CREATION;
   error = team_debugger.SetTeamDebuggingFlags(flags);
+  dbg.print("np6");
   if (error < 0) {
     LLDB_LOG(log, "Cloud not set team debugging flags: error={1}",
              error);
+    dbg.print("np7");
     return llvm::make_error<StringError>("Cloud not set team debugging flags",
                                          llvm::inconvertibleErrorCode());
   }
@@ -114,7 +144,9 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   LLDB_LOG(log, "inferior started, now in stopped state");
 
   ProcessInstanceInfo Info;
+  dbg.print("np8");
   if (!Host::GetProcessInfo(pid, Info)) {
+    dbg.print("np9");
     return llvm::make_error<StringError>("Cannot get process architecture",
                                          llvm::inconvertibleErrorCode());
   }
@@ -123,10 +155,12 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   LLDB_LOG(log, "pid = {0:x}, detected architecture {1}", pid,
            Info.GetArchitecture().GetArchitectureName());
 
+  dbg.print("np10");
   std::unique_ptr<NativeProcessHaiku> process_up(new NativeProcessHaiku(
       pid, launch_info.GetPTY().ReleasePrimaryFileDescriptor(), native_delegate,
       Info.GetArchitecture(), mainloop));
 
+  dbg.print("np11");
   status = process_up->SetupTrace();
   if (status.Fail())
     return status.ToError();
