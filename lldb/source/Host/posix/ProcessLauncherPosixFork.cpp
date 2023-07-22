@@ -93,26 +93,6 @@ static void DupDescriptor(int error_fd, const FileSpec &file_spec, int fd,
   return;
 }
 
-class dbg_printer
-{
-  FILE *fp;
-public:
-  dbg_printer(const char *name) :
-    fp(fopen(name, "a+"))
-  {}
-  
-  ~dbg_printer()
-  {
-    fclose(fp);
-  }
-  
-  void print(const char *text)
-  {
-    fprintf(fp, "%s\n", text);
-    fflush(fp);
-  }  
-};
-
 static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
                                               const ProcessLaunchInfo &info) {
   if (info.GetFlags().Test(eLaunchFlagLaunchInSeparateProcessGroup)) {
@@ -174,10 +154,7 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
 
     // Start tracing this child that is about to exec.
 #ifdef __HAIKU__
-    dbg_printer dbg("child.txt");
-    dbg.print("cf9");
     wait_for_debugger();
-    dbg.print("cf10");
 #else
     if (ptrace(PT_TRACE_ME, 0, nullptr, 0) == -1)
       ExitWithError(error_fd, "ptrace");
@@ -185,8 +162,6 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
   }
 
   // Execute.  We should never return...
-  dbg_printer dbg("child.txt");
-  dbg.print("cf11");
   execve(argv[0], const_cast<char *const *>(argv), envp);
 
 #if defined(__linux__)
@@ -206,7 +181,6 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
 
   // ...unless exec fails.  In which case we definitely need to end the child
   // here.
-  dbg.print("cf12");
   ExitWithError(error_fd, "execve");
 }
 
@@ -239,7 +213,6 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
 
   // parent process
 
-  dbg_printer dbg("parent.txt");
 #ifdef __HAIKU__
   if (launch_info.GetFlags().Test(eLaunchFlagDebug)) {
     // wait_for_debugger() blocks reading from pipe.
@@ -252,18 +225,13 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
   pipe.CloseWriteFileDescriptor();
   char buf[1000];
   int r = read(pipe.GetReadFileDescriptor(), buf, sizeof buf);
-  dbg.print("parent8");
 
-  if (r == 0) {
-    dbg.print("parent9");
+  if (r == 0)
     return HostProcess(pid); // No error. We're done.
-  }
 
-  dbg.print("parent10");
   error.SetErrorString(buf);
 
   llvm::sys::RetryAfterSignal(-1, waitpid, pid, nullptr, 0);
-  dbg.print("parent11");
 
   return HostProcess();
 }
