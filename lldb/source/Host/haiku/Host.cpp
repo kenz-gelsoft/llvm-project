@@ -49,11 +49,9 @@ GetHaikuProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
                       ProcessInstanceInfo &process_info) {
   if (process_info.ProcessIDIsValid()) {
     // FIXME: team_info.args hold just 64 bytes only.
-    thread_info thread;
     team_info team;
     size_t arg_data_size = sizeof(team.args);
-    if (::get_thread_info(process_info.GetProcessID(), &thread) == B_OK &&
-        ::get_team_info(thread.team, &team) == B_OK) {
+    if (::get_team_info(process_info.GetProcessID(), &team) == B_OK) {
       DataExtractor data(team.args, arg_data_size, endian::InlHostByteOrder(),
                          sizeof(void *));
       lldb::offset_t offset = 0;
