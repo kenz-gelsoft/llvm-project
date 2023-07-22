@@ -101,26 +101,17 @@ static bool GetHaikuProcessCPUType(ProcessInstanceInfo &process_info) {
 }
 
 static bool GetHaikuProcessUserAndGroup(ProcessInstanceInfo &process_info) {
-  assert(false);
-//  struct kinfo_proc proc_kinfo;
-//  size_t proc_kinfo_size;
-
   if (process_info.ProcessIDIsValid()) {
-    assert(false);
-//    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID,
-//                  (int)process_info.GetProcessID()};
-//    proc_kinfo_size = sizeof(struct kinfo_proc);
-//
-//    if (::sysctl(mib, 4, &proc_kinfo, &proc_kinfo_size, NULL, 0) == 0) {
-//      if (proc_kinfo_size > 0) {
-//        process_info.SetParentProcessID(proc_kinfo.p_ppid);
-//        process_info.SetUserID(proc_kinfo.p_ruid);
-//        process_info.SetGroupID(proc_kinfo.p_rgid);
-//        process_info.SetEffectiveUserID(proc_kinfo.p_uid);
-//	process_info.SetEffectiveGroupID(proc_kinfo.p_gid);
-//        return true;
-//      }
-//    }
+    team_info team;
+    if (::get_team_info(process_info.GetProcessID(), &team) == B_OK) {
+        process_info.SetParentProcessID(team.parent);
+        process_info.SetUserID(team.real_uid);
+        process_info.SetGroupID(team.real_gid);
+        process_info.SetEffectiveUserID(team.uid);
+        process_info.SetEffectiveGroupID(team.gid);
+        return true;
+    }
+  }
   }
   process_info.SetParentProcessID(LLDB_INVALID_PROCESS_ID);
   process_info.SetUserID(UINT32_MAX);
