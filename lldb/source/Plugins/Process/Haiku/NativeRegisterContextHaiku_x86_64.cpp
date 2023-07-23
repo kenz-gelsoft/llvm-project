@@ -243,7 +243,7 @@ static const RegisterSet g_reg_sets_x86_64[k_num_register_sets] = {
      g_mpx_regnums_x86_64},
 };
 
-#define REG_CONTEXT_SIZE (GetRegisterInfoInterface().GetGPRSize())
+#define REG_CONTEXT_SIZE (sizeof(debug_cpu_state))
 
 NativeRegisterContextHaiku *
 NativeRegisterContextHaiku::CreateHostNativeRegisterContextHaiku(
@@ -272,8 +272,6 @@ NativeRegisterContextHaiku_x86_64::NativeRegisterContextHaiku_x86_64(
     : NativeRegisterContextRegisterInfo(
           native_thread, CreateRegisterInfoInterface(target_arch)),
       m_regset_offsets({0}) {
-  assert(false);
-//  assert(m_gpr.size() == GetRegisterInfoInterface().GetGPRSize());
   std::array<uint32_t, MaxRegularRegSet + 1> first_regnos;
 
   switch (GetRegisterInfoInterface().GetTargetArchitecture().GetMachine()) {
@@ -350,23 +348,16 @@ NativeRegisterContextHaiku_x86_64::GetSetForNativeRegNum(
   llvm_unreachable("Register does not belong to any register set");
 }
 
-Status NativeRegisterContextHaiku_x86_64::ReadRegisterSet(RegSetKind set) {
-  assert(false);
-  switch (set) {
-  case GPRegSet:
-//    return DoRegisterSet(PT_GETREGS, m_gpr.data());
-  case DBRegSet:
-//    return DoRegisterSet(PT_GETDBREGS, m_dbr.data());
-  case FPRegSet:
-  case YMMRegSet:
-  case MPXRegSet: {
-//    struct iovec iov = {m_xstate.data(), m_xstate.size()};
-//    Status ret = DoRegisterSet(PT_GETXSTATE, &iov);
-//    assert(reinterpret_cast<xstate *>(m_xstate.data())->xs_rfbm & XCR0_X87);
-//    return ret;
+Status NativeRegisterContextHaiku_x86_64::ReadRegisterSet() {
+  Status error;
+
+  debug_debugger_message message;
+  if (team_debugger.GetThreadCpuState(m_thread.GetID(), &message, &m_cpu_state) != B_OK) {
+    error.SetErrorString("failed to get registers");
+    return error;
   }
-  }
-  llvm_unreachable("NativeRegisterContextHaiku_x86_64::ReadRegisterSet");
+
+  return error;
 }
 
 Status NativeRegisterContextHaiku_x86_64::WriteRegisterSet(RegSetKind set) {
@@ -416,7 +407,7 @@ NativeRegisterContextHaiku_x86_64::ReadRegister(const RegisterInfo *reg_info,
   }
 
   RegSetKind set = opt_set.getValue();
-  error = ReadRegisterSet(set);
+  error = ReadRegisterSet();
   if (error.Fail())
     return error;
 
@@ -486,7 +477,7 @@ Status NativeRegisterContextHaiku_x86_64::WriteRegister(
   RegSetKind set = opt_set.getValue();
   uint64_t new_xstate_bv = 0;
 
-  error = ReadRegisterSet(set);
+  error = ReadRegisterSet();
   if (error.Fail())
     return error;
 
@@ -540,14 +531,12 @@ Status NativeRegisterContextHaiku_x86_64::ReadAllRegisterValues(
   Status error;
 
   data_sp.reset(new DataBufferHeap(REG_CONTEXT_SIZE, 0));
-  error = ReadRegisterSet(GPRegSet);
+  error = ReadRegisterSet();
   if (error.Fail())
     return error;
 
   uint8_t *dst = data_sp->GetBytes();
-  assert(false);
-//  ::memcpy(dst, m_gpr.data(), GetRegisterInfoInterface().GetGPRSize());
-  dst += GetRegisterInfoInterface().GetGPRSize();
+  ::memcpy(dst, m_cpu_state, sizeof(m_cpu_state));
 
   return error;
 }

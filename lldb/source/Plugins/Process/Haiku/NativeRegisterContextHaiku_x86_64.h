@@ -68,6 +68,7 @@ private:
   };
 
   // Private member variables.
+  debug_cpu_state m_cpu_state;
 //  std::array<uint8_t, sizeof(struct reg)> m_gpr;
 //  std::array<uint8_t, sizeof(struct xstate)> m_xstate;
 //  std::array<uint8_t, sizeof(struct dbreg)> m_dbr;
@@ -75,7 +76,7 @@ private:
 
   llvm::Optional<RegSetKind> GetSetForNativeRegNum(uint32_t reg_num) const;
 
-  Status ReadRegisterSet(RegSetKind set);
+  Status ReadRegisterSet();
   Status WriteRegisterSet(RegSetKind set);
 
   uint8_t *GetOffsetRegSetData(RegSetKind set, size_t reg_offset);
