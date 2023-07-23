@@ -81,6 +81,8 @@ static Status EnsureFDFlags(int fd, int flags) {
   return error;
 }
 
+BTeamDebugger lldb_private::process_haiku::team_debugger;
+
 // Public Static Methods
 
 llvm::Expected<std::unique_ptr<NativeProcessProtocol>>
@@ -106,7 +108,6 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
 
   // Wait for the child process to trap on its call to execve.
   dbg.print("np3");
-  BTeamDebugger team_debugger;
   status_t error = team_debugger.Install(pid);
   dbg.print("np4");
   if (error != B_OK) {
@@ -1050,9 +1051,9 @@ Status NativeProcessHaiku::ReinitializeThreads() {
   int32 cookie = 0;
   thread_info info;
   while (get_next_thread_info(GetID(), &cookie, &info) == B_OK) {
-  	// TODO: Consider to merge with caller's logic
-  	// as we can access thread name or other thread properties here
-  	AddThread(info.thread);
+    // TODO: Consider to merge with caller's logic
+    // as we can access thread name or other thread properties here
+    AddThread(info.thread);
   }
 
   return Status(); // cannot report error.
