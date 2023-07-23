@@ -17,65 +17,54 @@
 using namespace lldb_private;
 using namespace lldb;
 
-// src/sys/arch/amd64/include/frame_regs.h
+// headers/os/arch/x86_64/arch_debugger.h
+#include <posix/arch/x86_64/signal.h>
+
+
+// The layout of this struct matches the one used by the FXSAVE instruction on
+// an AVX CPU
+typedef struct _FPR {
+	struct fpu_state			fp_fxsave;
+	struct xstate_hdr			fp_xstate;
+	struct x86_64_xmm_register	fp_ymm[16];
+		// The high half of the YMM registers, to combine with the low half
+		// found in fp_fxsave.xmm
+} FPR;
+
 typedef struct _GPR {
-  uint64_t rdi;    /*  0 */
-  uint64_t rsi;    /*  1 */
-  uint64_t rdx;    /*  2 */
-  uint64_t rcx;    /*  3 */
-  uint64_t r8;     /*  4 */
-  uint64_t r9;     /*  5 */
-  uint64_t r10;    /*  6 */
-  uint64_t r11;    /*  7 */
-  uint64_t r12;    /*  8 */
-  uint64_t r13;    /*  9 */
-  uint64_t r14;    /* 10 */
-  uint64_t r15;    /* 11 */
-  uint64_t rbp;    /* 12 */
-  uint64_t rbx;    /* 13 */
-  uint64_t rax;    /* 14 */
-  uint64_t gs;     /* 15 */
-  uint64_t fs;     /* 16 */
-  uint64_t es;     /* 17 */
-  uint64_t ds;     /* 18 */
-  uint64_t trapno; /* 19 */
-  uint64_t err;    /* 20 */
-  uint64_t rip;    /* 21 */
-  uint64_t cs;     /* 22 */
-  uint64_t rflags; /* 23 */
-  uint64_t rsp;    /* 24 */
-  uint64_t ss;     /* 25 */
-} GPR;
-
-struct DBG {
-  uint64_t dr[16]; /* debug registers */
-                   /* Index 0-3: debug address registers */
-                   /* Index 4-5: reserved */
-                   /* Index 6: debug status */
-                   /* Index 7: debug control */
-                   /* Index 8-15: reserved */
-};
-
-/*
- * src/sys/arch/amd64/include/mcontext.h
- *
- * typedef struct {
- *       __gregset_t     __gregs;
- *       __greg_t        _mc_tlsbase;
- *       __fpregset_t    __fpregs;
- * } mcontext_t;
- */
+	uint64	gs;
+	uint64	fs;
+	uint64	es;
+	uint64	ds;
+	uint64	r15;
+	uint64	r14;
+	uint64	r13;
+	uint64	r12;
+	uint64	r11;
+	uint64	r10;
+	uint64	r9;
+	uint64	r8;
+	uint64	rbp;
+	uint64	rsi;
+	uint64	rdi;
+	uint64	rdx;
+	uint64	rcx;
+	uint64	rbx;
+	uint64	rax;
+	uint64	vector;
+	uint64	error_code;
+	uint64	rip;
+	uint64	cs;
+	uint64	rflags;
+	uint64	rsp;
+	uint64	ss;
+} __attribute__((aligned(16))) GPR;
 
 struct UserArea {
-  GPR gpr;
-  uint64_t mc_tlsbase;
-  FPR fpr;
-  DBG dbg;
-};
+	FPR	extended_registers;
 
-#define DR_OFFSET(reg_index)                                                   \
-  (LLVM_EXTENSION offsetof(UserArea, dbg) +                                    \
-   LLVM_EXTENSION offsetof(DBG, dr[reg_index]))
+  GPR	gpr;
+} __attribute__((aligned(16)));
 
 
 // Include RegisterInfos_x86_64 to declare our g_register_infos_x86_64
