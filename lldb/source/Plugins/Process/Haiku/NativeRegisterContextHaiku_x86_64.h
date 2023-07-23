@@ -14,7 +14,9 @@
 // clang-format off
 #include <sys/param.h>
 #include <sys/types.h>
-#ifndef __HAIKU__
+#ifdef __HAIKU__
+#include <os/kernel/debugger.h>
+#else
 #include <sys/ptrace.h>
 #include <machine/reg.h>
 #endif

@@ -16,6 +16,7 @@
 #include "lldb/Utility/RegisterValue.h"
 #include "lldb/Utility/Status.h"
 
+#include "Plugins/Process/Haiku/NativeProcessHaiku.h"
 #include "Plugins/Process/Utility/RegisterContextHaiku_i386.h"
 #include "Plugins/Process/Utility/RegisterContextHaiku_x86_64.h"
 
@@ -36,6 +37,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 // clang-format on
+
+#include <TeamDebugger.h>
 
 using namespace lldb_private;
 using namespace lldb_private::process_haiku;
@@ -352,7 +355,7 @@ Status NativeRegisterContextHaiku_x86_64::ReadRegisterSet() {
   Status error;
 
   debug_debugger_message message;
-  if (team_debugger.GetThreadCpuState(m_thread.GetID(), &message, &m_cpu_state) != B_OK) {
+  if (team_debugger->GetThreadCpuState(m_thread.GetID(), &message, &m_cpu_state) != B_OK) {
     error.SetErrorString("failed to get registers");
     return error;
   }
@@ -536,7 +539,7 @@ Status NativeRegisterContextHaiku_x86_64::ReadAllRegisterValues(
     return error;
 
   uint8_t *dst = data_sp->GetBytes();
-  ::memcpy(dst, m_cpu_state, sizeof(m_cpu_state));
+  ::memcpy(dst, &m_cpu_state, sizeof(m_cpu_state));
 
   return error;
 }
