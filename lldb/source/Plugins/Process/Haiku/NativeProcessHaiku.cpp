@@ -81,7 +81,7 @@ static Status EnsureFDFlags(int fd, int flags) {
   return error;
 }
 
-BTeamDebugger lldb_private::process_haiku::team_debugger;
+std::shared_ptr<BTeamDebugger> lldb_private::process_haiku::team_debugger;
 
 // Public Static Methods
 
@@ -108,7 +108,8 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
 
   // Wait for the child process to trap on its call to execve.
   dbg.print("np3");
-  status_t error = team_debugger.Install(pid);
+  team_debugger = std::make_shared<BTeamDebugger>();
+  status_t error = team_debugger->Install(pid);
   dbg.print("np4");
   if (error != B_OK) {
     LLDB_LOG(log, "Could not install team debugger: error={1}",
@@ -123,7 +124,7 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
       B_TEAM_DEBUG_POST_SYSCALL |
       B_TEAM_DEBUG_SIGNALS |
       B_TEAM_DEBUG_TEAM_CREATION;
-  error = team_debugger.SetTeamDebuggingFlags(flags);
+  error = team_debugger->SetTeamDebuggingFlags(flags);
   dbg.print("np6");
   if (error < 0) {
     LLDB_LOG(log, "Cloud not set team debugging flags: error={1}",

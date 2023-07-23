@@ -16,11 +16,13 @@
 
 #include "NativeThreadHaiku.h"
 
+class BTeamDebugger;
+
 namespace lldb_private {
 namespace process_haiku {
 
 // FIXME: make per-team, threadsafe (if needed)
-extern BTeamDebugger team_debugger;
+extern std::shared_ptr<BTeamDebugger> team_debugger;
 
 /// \class NativeProcessHaiku
 /// Manages communication with the inferior (debugee) process.
