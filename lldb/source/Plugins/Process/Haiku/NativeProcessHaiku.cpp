@@ -162,12 +162,19 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
 
   dbg.print("np11");
   status = process_up->SetupTrace();
-  if (status.Fail())
+  if (status.Fail()) {
+    dbg.print("np12");
     return status.ToError();
+  }
 
-  for (const auto &thread : process_up->m_threads)
+  dbg.print("np13");
+  for (const auto &thread : process_up->m_threads) {
     static_cast<NativeThreadHaiku &>(*thread).SetStoppedBySignal(SIGSTOP);
+    dbg.print("np14");
+  }
+  dbg.print("np15");
   process_up->SetState(StateType::eStateStopped, false);
+  dbg.print("np16");
 
   return std::move(process_up);
 }
@@ -1021,17 +1028,16 @@ NativeProcessHaiku::GetAuxvData() const {
 
 Status NativeProcessHaiku::SetupTrace() {
   // Enable event reporting
-  assert(false);
 //  ptrace_event_t events;
-  Status status; // =
+//  Status status =
 //      PtraceWrapper(PT_GET_EVENT_MASK, GetID(), &events, sizeof(events));
-  if (status.Fail())
-    return status;
+//  if (status.Fail())
+//    return status;
   // TODO: PTRACE_FORK | PTRACE_VFORK | PTRACE_POSIX_SPAWN?
 //  events.pe_set_event |= PTRACE_LWP_CREATE | PTRACE_LWP_EXIT;
 //  status = PtraceWrapper(PT_SET_EVENT_MASK, GetID(), &events, sizeof(events));
-  if (status.Fail())
-    return status;
+//  if (status.Fail())
+//    return status;
 
   return ReinitializeThreads();
 }
@@ -1040,29 +1046,14 @@ Status NativeProcessHaiku::ReinitializeThreads() {
   // Clear old threads
   m_threads.clear();
 
-  // Initialize new thread
-  assert(false);
-//#ifdef PT_LWPSTATUS
-//  struct ptrace_lwpstatus info = {};
-//  int op = PT_LWPNEXT;
-//#else
-//  struct ptrace_lwpinfo info = {};
-//  int op = PT_LWPINFO;
-//#endif
-
-  Status error;// = PtraceWrapper(op, GetID(), &info, sizeof(info));
-
-  if (error.Fail()) {
-    return error;
-  }
   // Reinitialize from scratch threads and register them in process
-//  while (info.pl_lwpid != 0) {
-//    AddThread(info.pl_lwpid);
-//    error = PtraceWrapper(op, GetID(), &info, sizeof(info));
-//    if (error.Fail()) {
-//      return error;
-//    }
-//  }
+  int32 cookie = 0;
+  thread_info info;
+  while (get_next_thread_info(GetID(), &cookie, &info) == B_OK) {
+  	// TODO: Consider to merge with caller's logic
+  	// as we can access thread name or other thread properties here
+  	AddThread(info.thread);
+  }
 
-  return error;
+  return Status(); // cannot report error.
 }
