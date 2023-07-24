@@ -17,10 +17,63 @@
 using namespace lldb_private;
 using namespace lldb;
 
+// headers/posix/arch/x86_64/signal.h
+/*
+ * Architecture-specific structure passed to signal handlers
+ */
+
+
+struct x86_64_fp_register {
+	unsigned char value[10];
+	unsigned char reserved[6];
+};
+
+
+struct x86_64_xmm_register {
+	unsigned char value[16];
+};
+
+
+// The layout of this struct matches the one used by the FXSAVE instruction
+struct fpu_state {
+	unsigned short		control;
+	unsigned short		status;
+	unsigned short		tag;
+	unsigned short		opcode;
+	unsigned long		rip;
+	unsigned long		rdp;
+	unsigned int		mxcsr;
+	unsigned int		mscsr_mask;
+
+	union {
+		struct x86_64_fp_register fp[8];
+		struct x86_64_fp_register mmx[8];
+	};
+
+	struct x86_64_xmm_register		xmm[16];
+	unsigned char		_reserved_416_511[96];
+};
+
+
+struct xstate_hdr {
+	unsigned long		bv;
+	unsigned long		xcomp_bv;
+	unsigned char		_reserved[48];
+};
+
+
+// The layout of this struct matches the one used by the FXSAVE instruction on
+// an AVX CPU
+struct savefpu {
+	struct fpu_state			fp_fxsave;
+	struct xstate_hdr			fp_xstate;
+	struct x86_64_xmm_register	fp_ymm[16];
+		// The high half of the YMM registers, to combine with the low half
+		// found in fp_fxsave.xmm
+};
+
+
 // headers/os/arch/x86_64/arch_debugger.h
-#include <posix/arch/x86_64/signal.h>
-
-
 struct x86_64_debug_cpu_state {
 	struct savefpu	extended_registers;
 
