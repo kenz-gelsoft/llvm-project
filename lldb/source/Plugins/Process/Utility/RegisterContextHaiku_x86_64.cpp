@@ -25,54 +25,64 @@ namespace {
  */
 
 
-struct x86_64_fp_register {
-	unsigned char value[10];
+typedef struct x86_64_fp_register {
+	unsigned char bytes[10];//value[10];
 	unsigned char reserved[6];
-};
+} MMSReg;
 
 
-struct x86_64_xmm_register {
+typedef struct x86_64_xmm_register {
 	unsigned char value[16];
-};
+} YMMHReg;
 
 
 // The layout of this struct matches the one used by the FXSAVE instruction
-struct fpu_state {
-	unsigned short		control;
-	unsigned short		status;
-	unsigned short		tag;
-	unsigned short		opcode;
-	unsigned long		rip;
-	unsigned long		rdp;
+typedef struct fpu_state {
+	unsigned short		fctrl;//control;
+	unsigned short		fstat;//status;
+	unsigned short		ftag;//tag;
+	unsigned short		fop;//opcode;
+	union {
+		struct {
+			unsigned long		fip;//rip;
+			unsigned long		fdp;//rdp;
+		} x86_64;
+		struct {
+			uint32_t		fioff;
+			uint32_t		fiseg;
+			uint32_t		fooff;
+			uint32_t		foseg;
+		} i386_;
+	} ptr;
 	unsigned int		mxcsr;
-	unsigned int		mscsr_mask;
+	unsigned int		mxcsrmask;//mscsr_mask;
 
 	union {
-		struct x86_64_fp_register fp[8];
-		struct x86_64_fp_register mmx[8];
+		MMSReg stmm[8];//fp[8];
+		MMSReg mmx[8];
 	};
 
-	struct x86_64_xmm_register		xmm[16];
+	YMMHReg		xmm[16];
 	unsigned char		_reserved_416_511[96];
-};
+} FXSAVE;
 
 
-struct xstate_hdr {
+typedef struct xstate_hdr {
 	unsigned long		bv;
 	unsigned long		xcomp_bv;
 	unsigned char		_reserved[48];
-};
+} XSAVE_HDR;
 
 
 // The layout of this struct matches the one used by the FXSAVE instruction on
 // an AVX CPU
-struct savefpu {
-	struct fpu_state			fp_fxsave;
-	struct xstate_hdr			fp_xstate;
-	struct x86_64_xmm_register	fp_ymm[16];
+typedef struct savefpu {
+	FXSAVE		fxsave;//fp_fxsave;
+	XSAVE_HDR		fp_xstate;
+	YMMHReg		ymmh[16];//fp_ymm[16];
 		// The high half of the YMM registers, to combine with the low half
 		// found in fp_fxsave.xmm
-};
+} FPR;
 
 
 // headers/os/arch/x86_64/arch_debugger.h
@@ -106,12 +116,15 @@ typedef struct _GPR {
 } __attribute__((aligned(16))) GPR;
 
 typedef struct x86_64_debug_cpu_state {
-	struct savefpu	fpr;//extended_registers;
+	FPR	fpr;//extended_registers;
 
 	GPR	gpr;
 } __attribute__((aligned(16))) UserArea;
 
-#define GPR_OFFSET(regname) (LLVM_EXTENSION offsetof(GPR, regname))
+#define GPR_OFFSET(regname)                                                    \
+  (LLVM_EXTENSION offsetof(UserArea, gpr) +                                    \
+   LLVM_EXTENSION offsetof(GPR, regname))
+
 #define DEFINE_GPR(reg, alt, kind1, kind2, kind3, kind4)                       \
   {                                                                            \
 #reg, alt, sizeof(((GPR *)nullptr)->reg), GPR_OFFSET(reg), eEncodingUint,  \
@@ -130,8 +143,7 @@ typedef struct x86_64_debug_cpu_state {
 // Based on DNBArchImplX86_64.cpp from debugserver
 #define YMM_OFFSET(reg_index)                                                  \
   (LLVM_EXTENSION offsetof(UserArea, fpr) +                                    \
-   LLVM_EXTENSION offsetof(FPR, xsave) +                                       \
-   LLVM_EXTENSION offsetof(XSAVE, ymmh[0]) + (32 * reg_index))
+   LLVM_EXTENSION offsetof(FPR, ymmh[0]) + (32 * reg_index))
 
 // Number of bytes needed to represent a FPR.
 #define FPR_SIZE(reg) sizeof(((FXSAVE *)nullptr)->reg)
