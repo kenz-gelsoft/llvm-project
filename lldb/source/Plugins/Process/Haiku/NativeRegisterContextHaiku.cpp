@@ -22,11 +22,6 @@ using namespace lldb_private::process_haiku;
 #endif
 // clang-format on
 
-Status NativeRegisterContextHaiku::DoRegisterSet(int ptrace_req, void *buf) {
-  return NativeProcessHaiku::PtraceWrapper(ptrace_req, GetProcessPid(), buf,
-                                            m_thread.GetID());
-}
-
 NativeProcessHaiku &NativeRegisterContextHaiku::GetProcess() {
   return static_cast<NativeProcessHaiku &>(m_thread.GetProcess());
 }

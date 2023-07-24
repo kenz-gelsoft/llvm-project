@@ -33,7 +33,6 @@ public:
   CopyHardwareWatchpointsFrom(NativeRegisterContextHaiku &source) = 0;
 
 protected:
-  Status DoRegisterSet(int req, void *buf);
   virtual NativeProcessHaiku &GetProcess();
   virtual ::pid_t GetProcessPid();
 };

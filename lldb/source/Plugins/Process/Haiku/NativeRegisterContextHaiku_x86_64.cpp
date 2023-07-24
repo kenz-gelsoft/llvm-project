@@ -363,21 +363,21 @@ Status NativeRegisterContextHaiku_x86_64::ReadRegisterSet() {
   return error;
 }
 
-Status NativeRegisterContextHaiku_x86_64::WriteRegisterSet(RegSetKind set) {
-  assert(false);
-  switch (set) {
-  case GPRegSet:
-//    return DoRegisterSet(PT_SETREGS, m_gpr.data());
-  case DBRegSet:
-//    return DoRegisterSet(PT_SETDBREGS, m_dbr.data());
-  case FPRegSet:
-  case YMMRegSet:
-  case MPXRegSet: {
-//    struct iovec iov = {&m_xstate, sizeof(m_xstate)};
-//    return DoRegisterSet(PT_SETXSTATE, &iov);
+Status NativeRegisterContextHaiku_x86_64::WriteRegisterSet() {
+  Status error;
+
+  debug_nub_set_cpu_state message;
+  message.thread = m_thread.GetID();
+  
+  memcpy(&message.cpu_state, &m_cpu_state, sizeof(m_cpu_state));
+  
+  if (team_debugger->SendDebugMessage(B_DEBUG_MESSAGE_SET_CPU_STATE,
+      &message, sizeof(message), NULL, 0) != B_OK) {
+    error.SetErrorString("failed to set registers");
+    return error;
   }
-  }
-  llvm_unreachable("NativeRegisterContextHaiku_x86_64::WriteRegisterSet");
+
+  return error;
 }
 
 Status
@@ -526,7 +526,7 @@ Status NativeRegisterContextHaiku_x86_64::WriteRegister(
 
 //  if (new_xstate_bv != 0)
 //    reinterpret_cast<xstate *>(m_xstate.data())->xs_xstate_bv |= new_xstate_bv;
-  return WriteRegisterSet(set);
+  return WriteRegisterSet();
 }
 
 Status NativeRegisterContextHaiku_x86_64::ReadAllRegisterValues(
@@ -574,7 +574,7 @@ Status NativeRegisterContextHaiku_x86_64::WriteAllRegisterValues(
   assert(false);
 //  ::memcpy(m_gpr.data(), src, GetRegisterInfoInterface().GetGPRSize());
 
-  error = WriteRegisterSet(GPRegSet);
+  error = WriteRegisterSet();
   if (error.Fail())
     return error;
   src += GetRegisterInfoInterface().GetGPRSize();
@@ -595,7 +595,7 @@ llvm::Error NativeRegisterContextHaiku_x86_64::CopyHardwareWatchpointsFrom(
 
     assert(false);
 //    m_dbr = r_source.m_dbr;
-    res = WriteRegisterSet(DBRegSet);
+    res = WriteRegisterSet();
   }
   return res.ToError();
 }

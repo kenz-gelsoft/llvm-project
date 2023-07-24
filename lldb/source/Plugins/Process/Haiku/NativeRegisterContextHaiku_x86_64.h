@@ -79,7 +79,7 @@ private:
   llvm::Optional<RegSetKind> GetSetForNativeRegNum(uint32_t reg_num) const;
 
   Status ReadRegisterSet();
-  Status WriteRegisterSet(RegSetKind set);
+  Status WriteRegisterSet();
 
   uint8_t *GetOffsetRegSetData(RegSetKind set, size_t reg_offset);
 
