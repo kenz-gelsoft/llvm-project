@@ -21,17 +21,9 @@ using namespace lldb;
 #include <posix/arch/x86_64/signal.h>
 
 
-// The layout of this struct matches the one used by the FXSAVE instruction on
-// an AVX CPU
-typedef struct _FPR {
-	struct fpu_state			fp_fxsave;
-	struct xstate_hdr			fp_xstate;
-	struct x86_64_xmm_register	fp_ymm[16];
-		// The high half of the YMM registers, to combine with the low half
-		// found in fp_fxsave.xmm
-} FPR;
+struct x86_64_debug_cpu_state {
+	struct savefpu	extended_registers;
 
-typedef struct _GPR {
 	uint64	gs;
 	uint64	fs;
 	uint64	es;
@@ -58,12 +50,6 @@ typedef struct _GPR {
 	uint64	rflags;
 	uint64	rsp;
 	uint64	ss;
-} __attribute__((aligned(16))) GPR;
-
-struct UserArea {
-	FPR	extended_registers;
-
-  GPR	gpr;
 } __attribute__((aligned(16)));
 
 
