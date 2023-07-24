@@ -14,65 +14,18 @@
 #include <cassert>
 #include <cstddef>
 
+#include <posix/arch/x86_64/signal.h>
+
 using namespace lldb_private;
 using namespace lldb;
 
 namespace {
 
 // headers/posix/arch/x86_64/signal.h
-/*
- * Architecture-specific structure passed to signal handlers
- */
-
-
-typedef struct x86_64_fp_register {
-	unsigned char bytes[10];//value[10];
-	unsigned char reserved[6];
-} MMSReg;
-
-
-typedef struct x86_64_xmm_register {
-	unsigned char value[16];
-} YMMHReg;
-
-
-// The layout of this struct matches the one used by the FXSAVE instruction
-typedef struct fpu_state {
-	unsigned short		fctrl;//control;
-	unsigned short		fstat;//status;
-	unsigned short		ftag;//tag;
-	unsigned short		fop;//opcode;
-	union {
-		struct {
-			unsigned long		fip;//rip;
-			unsigned long		fdp;//rdp;
-		} x86_64;
-		struct {
-			uint32_t		fioff;
-			uint32_t		fiseg;
-			uint32_t		fooff;
-			uint32_t		foseg;
-		} i386_;
-	} ptr;
-	unsigned int		mxcsr;
-	unsigned int		mxcsrmask;//mscsr_mask;
-
-	union {
-		MMSReg stmm[8];//fp[8];
-		MMSReg mmx[8];
-	};
-
-	YMMHReg		xmm[16];
-	unsigned char		_reserved_416_511[96];
-} FXSAVE;
-
-
-typedef struct xstate_hdr {
-	unsigned long		bv;
-	unsigned long		xcomp_bv;
-	unsigned char		_reserved[48];
-} XSAVE_HDR;
-
+static_assert(sizeof(MMSReg) == sizeof(struct x86_64_fp_register), "");
+static_assert(sizeof(YMMHReg) == sizeof(struct x86_64_xmm_register), "");
+static_assert(sizeof(FXSAVE) == sizeof(struct fpu_state), "");
+static_assert(sizeof(XSAVE_HDR) == sizeof(struct xstate_hdr), "");
 
 // The layout of this struct matches the one used by the FXSAVE instruction on
 // an AVX CPU
@@ -83,7 +36,6 @@ typedef struct savefpu {
 		// The high half of the YMM registers, to combine with the low half
 		// found in fp_fxsave.xmm
 } FPR;
-
 
 // headers/os/arch/x86_64/arch_debugger.h
 typedef struct _GPR {
