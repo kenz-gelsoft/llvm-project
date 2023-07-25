@@ -420,12 +420,11 @@ NativeRegisterContextHaiku_x86_64::ReadRegister(const RegisterInfo *reg_info,
   case FPRegSet:
   case DBRegSet: {
     void *data = GetOffsetRegSetData(set, reg_info->byte_offset);
-//    FXSAVE *fpr = reinterpret_cast<FXSAVE *>(m_xstate.data() +
-//                                             offsetof(xstate, xs_fxsave));
-//    if (data == &fpr->ftag) // ftag
-//      reg_value.SetUInt16(
-//          AbridgedToFullTagWord(fpr->ftag, fpr->fstat, fpr->stmm));
-//    else
+    FXSAVE *fpr = reinterpret_cast<FXSAVE *>(&m_cpu_state);
+    if (data == &fpr->ftag) // ftag
+      reg_value.SetUInt16(
+          AbridgedToFullTagWord(fpr->ftag, fpr->fstat, fpr->stmm));
+    else
       reg_value.SetBytes(data, reg_info->byte_size, endian::InlHostByteOrder());
     break;
   }
@@ -607,13 +606,13 @@ NativeRegisterContextHaiku_x86_64::GetOffsetRegSetData(RegSetKind set,
   assert(false);
   switch (set) {
   case GPRegSet:
-//    base = m_gpr.data();
+    base = &m_cpu_state + sizeof(struct savefpu);
     break;
   case FPRegSet:
-//    base = m_xstate.data() + offsetof(xstate, xs_fxsave);
+    base = &m_cpu_state;
     break;
   case DBRegSet:
-//    base = m_dbr.data();
+    llvm_unreachable("DBR regset should have returned error");
     break;
   case YMMRegSet:
     llvm_unreachable("GetRegSetData() is unsuitable for this regset.");
@@ -627,6 +626,7 @@ NativeRegisterContextHaiku_x86_64::GetOffsetRegSetData(RegSetKind set,
 llvm::Optional<NativeRegisterContextHaiku_x86_64::YMMSplitPtr>
 NativeRegisterContextHaiku_x86_64::GetYMMSplitReg(uint32_t reg) {
   assert(false);
+  // TODO: get xstate pointer
 //  auto xst = reinterpret_cast<xstate *>(m_xstate.data());
 //  if (!(xst->xs_rfbm & XCR0_SSE) || !(xst->xs_rfbm & XCR0_YMM_Hi128))
     return llvm::None;
