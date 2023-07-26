@@ -414,7 +414,6 @@ NativeRegisterContextHaiku_x86_64::ReadRegister(const RegisterInfo *reg_info,
   if (error.Fail())
     return error;
 
-  assert(false);
   switch (set) {
   case GPRegSet:
   case FPRegSet:
@@ -603,13 +602,12 @@ uint8_t *
 NativeRegisterContextHaiku_x86_64::GetOffsetRegSetData(RegSetKind set,
                                                         size_t reg_offset) {
   uint8_t *base;
-  assert(false);
   switch (set) {
   case GPRegSet:
-    base = &m_cpu_state + sizeof(struct savefpu);
+    base = reinterpret_cast<uint8_t *>(&m_cpu_state) + sizeof(struct savefpu);
     break;
   case FPRegSet:
-    base = &m_cpu_state;
+    base = reinterpret_cast<uint8_t *>(&m_cpu_state);
     break;
   case DBRegSet:
     llvm_unreachable("DBR regset should have returned error");
