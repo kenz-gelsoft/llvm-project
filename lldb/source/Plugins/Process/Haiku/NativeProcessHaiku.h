@@ -97,6 +97,7 @@ private:
   ArchSpec m_arch;
   LazyBool m_supports_mem_region = eLazyBoolCalculate;
   std::vector<std::pair<MemoryRegionInfo, FileSpec>> m_mem_region_cache;
+  HostThread m_port_thread;
 
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,

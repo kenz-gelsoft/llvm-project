@@ -11,6 +11,7 @@
 #include "Plugins/Process/Haiku/NativeRegisterContextHaiku.h"
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
 #include "lldb/Host/HostProcess.h"
+#include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/common/NativeRegisterContext.h"
 #include "lldb/Host/posix/ProcessLauncherPosixFork.h"
 #include "lldb/Target/Process.h"
@@ -82,6 +83,56 @@ static Status EnsureFDFlags(int fd, int flags) {
 }
 
 std::shared_ptr<BTeamDebugger> lldb_private::process_haiku::team_debugger;
+
+static void *HaikuPortReadThread(void *arg) {
+  dbg_printer dbg("port.txt");
+  dbg.print("pt0");
+  thread_id thread = team_debugger->Team();
+  int i = 0;
+  while (1) {
+    int32 code;
+    debug_debugger_message_data data;
+    dbg.print("pt1");
+    team_debugger->ReadDebugMessage(code, data);
+    dbg.print("pt2");
+    
+    bool quit = false;
+    switch (code) {
+    case B_DEBUGGER_MESSAGE_TEAM_EXEC:
+      dbg.print("pt3");
+      printf("%d: TEAM_EXEC\n", i);
+      team_debugger->ContinueThread(thread);
+      break;
+    case B_DEBUGGER_MESSAGE_THREAD_DEBUGGED:
+    case B_DEBUGGER_MESSAGE_IMAGE_CREATED:
+    case B_DEBUGGER_MESSAGE_SINGLE_STEP:
+    case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED:
+      dbg.print("pt4");
+      printf("%d: code: %d\n", i, code);
+      team_debugger->ContinueThread(thread);
+      break;
+    case B_DEBUGGER_MESSAGE_POST_SYSCALL:
+      dbg.print("pt5");
+      printf("%d: THREAD_DEBUGGED\n", i);
+      team_debugger->ContinueThread(thread, true);
+      break;
+    case B_DEBUGGER_MESSAGE_TEAM_DELETED:
+      dbg.print("pt6");
+      printf("%d: TEAM_DELETED\n", i);
+      quit = true;
+      break;
+    }
+    
+    if (quit) {
+      dbg.print("pt7");
+      break;
+    }
+    
+    ++i;
+  }
+  dbg.print("pt8");
+  return nullptr;
+}
 
 // Public Static Methods
 
@@ -1040,6 +1091,13 @@ Status NativeProcessHaiku::SetupTrace() {
 //  status = PtraceWrapper(PT_SET_EVENT_MASK, GetID(), &events, sizeof(events));
 //  if (status.Fail())
 //    return status;
+  auto maybe_thread = ThreadLauncher::LaunchThread(
+      "HaikuPortReader", HaikuPortReadThread, nullptr);
+  if (maybe_thread) {
+    m_port_thread = *maybe_thread;
+  } else {
+    return Status("Cloud not create port reader thread");
+  }
 
   return ReinitializeThreads();
 }
