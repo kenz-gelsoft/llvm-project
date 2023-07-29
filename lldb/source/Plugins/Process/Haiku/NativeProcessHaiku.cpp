@@ -395,7 +395,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   // Either user-generated SIGTRAP or an unknown event that would
   // otherwise leave the debugger hanging.
   LLDB_LOG(log, "unknown SIGTRAP, passing to generic handler");
-  MonitorSignal(pid, SIGTRAP);
+//  MonitorSignal(pid, SIGTRAP);
 }
 
 void NativeProcessHaiku::MonitorSignal(lldb::pid_t pid, int signal) {
