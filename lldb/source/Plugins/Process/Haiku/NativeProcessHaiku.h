@@ -99,6 +99,8 @@ private:
   std::vector<std::pair<MemoryRegionInfo, FileSpec>> m_mem_region_cache;
   HostThread m_port_thread;
 
+  static void *PortReadThread(void *arg);
+
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
                       const ArchSpec &arch, MainLoop &mainloop);
@@ -111,7 +113,7 @@ private:
   void MonitorCallback(lldb::pid_t pid, int signal);
   void MonitorExited(lldb::pid_t pid, WaitStatus status);
   void MonitorSIGSTOP(lldb::pid_t pid);
-  void MonitorSIGTRAP(lldb::pid_t pid);
+  void MonitorPort(lldb::pid_t pid, int i);
   void MonitorSignal(lldb::pid_t pid, int signal);
 
   Status PopulateMemoryRegionCache();
