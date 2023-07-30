@@ -927,28 +927,11 @@ Status NativeProcessHaiku::Attach() {
 
 Status NativeProcessHaiku::ReadMemory(lldb::addr_t addr, void *buf,
                                        size_t size, size_t &bytes_read) {
-  unsigned char *dst = static_cast<unsigned char *>(buf);
-  assert(false);
-//  struct ptrace_io_desc io;
-
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_MEMORY));
   LLDB_LOG(log, "addr = {0}, buf = {1}, size = {2}", addr, buf, size);
-
-  bytes_read = 0;
-//  io.piod_op = PIOD_READ_D;
-//  io.piod_len = size;
-
-  do {
-//    io.piod_offs = (void *)(addr + bytes_read);
-//    io.piod_addr = dst + bytes_read;
-
-    Status error;// = NativeProcessHaiku::PtraceWrapper(PT_IO, GetID(), &io);
-    if (error.Fail())// || io.piod_len == 0)
-      return error;
-
-//    bytes_read += io.piod_len;
-//    io.piod_len = size - bytes_read;
-  } while (bytes_read < size);
+  
+  bytes_read = team_debugger->ReadMemory(reinterpret_cast<const void *>(addr),
+      buf, size);
 
   return Status();
 }
