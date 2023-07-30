@@ -383,8 +383,7 @@ PrivateGetRegisterCount(const lldb_private::ArchSpec &target_arch) {
     return static_cast<uint32_t>(GetPrivateRegisterInfoVector().size());
   }
   case llvm::Triple::x86_64:
-    return static_cast<uint32_t>(sizeof(g_register_infos_x86_64) /
-                                 sizeof(g_register_infos_x86_64[0]));
+    return llvm::array_lengthof(g_register_infos_x86_64);
   default:
     assert(false && "Unhandled target architecture.");
     return 0;
@@ -397,7 +396,7 @@ PrivateGetUserRegisterCount(const lldb_private::ArchSpec &target_arch) {
   case llvm::Triple::x86:
     return static_cast<uint32_t>(k_num_user_registers_i386);
   case llvm::Triple::x86_64:
-    return static_cast<uint32_t>(k_num_user_registers_x86_64);
+    return llvm::array_lengthof(g_register_infos_x86_64);
   default:
     assert(false && "Unhandled target architecture.");
     return 0;
