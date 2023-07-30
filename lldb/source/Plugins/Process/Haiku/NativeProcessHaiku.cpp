@@ -645,6 +645,7 @@ Status NativeProcessHaiku::Kill() {
 
 Status NativeProcessHaiku::GetMemoryRegionInfo(lldb::addr_t load_addr,
                                                 MemoryRegionInfo &range_info) {
+  return Status("unsupported");
 
   if (m_supports_mem_region == LazyBool::eLazyBoolNo) {
     // We're done.
