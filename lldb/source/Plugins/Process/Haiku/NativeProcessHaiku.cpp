@@ -508,7 +508,6 @@ Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
 
   Status ret;
 
-  assert(false);
 //  Expected<ptrace_siginfo_t> siginfo =
 //      ComputeSignalInfo(m_threads, resume_actions);
 //  if (!siginfo)
@@ -562,17 +561,9 @@ Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
       return ret;
   }
 
-  int signal = 0;
-//  if (siginfo->psi_siginfo.si_signo != LLDB_INVALID_SIGNAL_NUMBER) {
-//    ret = PtraceWrapper(PT_SET_SIGINFO, GetID(), &siginfo.get(),
-//                        sizeof(*siginfo));
-    if (!ret.Success())
-      return ret;
-//    signal = siginfo->psi_siginfo.si_signo;
-//  }
-
-//  ret =
-//      PtraceWrapper(PT_CONTINUE, GetID(), reinterpret_cast<void *>(1), signal);
+  status_t error = team_debugger->ContinueThread(GetID());
+  if (error != B_OK)
+    ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
   if (ret.Success())
     SetState(eStateRunning, true);
   return ret;
