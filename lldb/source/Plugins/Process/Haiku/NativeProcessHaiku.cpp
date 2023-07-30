@@ -830,34 +830,32 @@ Status NativeProcessHaiku::GetFileLoadAddress(const llvm::StringRef &file_name,
 void NativeProcessHaiku::SigchldHandler() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   // Process all pending waitpid notifications.
-  int status;
-  assert(false);
-//  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, waitpid, GetID(), &status,
-//                                                 WALLSIG | WNOHANG);
-//
-//  if (wait_pid == 0)
-//    return; // We are done.
-//
-//  if (wait_pid == -1) {
-//    Status error(errno, eErrorTypePOSIX);
-//    LLDB_LOG(log, "waitpid ({0}, &status, _) failed: {1}", GetID(), error);
-//  }
+  int status;  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, waitpid, GetID(), &status,
+                                                 WNOHANG);
+
+  if (wait_pid == 0)
+    return; // We are done.
+
+  if (wait_pid == -1) {
+    Status error(errno, eErrorTypePOSIX);
+    LLDB_LOG(log, "waitpid ({0}, &status, _) failed: {1}", GetID(), error);
+  }
 
   WaitStatus wait_status = WaitStatus::Decode(status);
-//  bool exited = wait_status.type == WaitStatus::Exit ||
-//                (wait_status.type == WaitStatus::Signal &&
-//                 wait_pid == static_cast<::pid_t>(GetID()));
-//
-//  LLDB_LOG(log,
-//           "waitpid ({0}, &status, _) => pid = {1}, status = {2}, exited = {3}",
-//           GetID(), wait_pid, status, exited);
-//
-//  if (exited)
-//    MonitorExited(wait_pid, wait_status);
-//  else {
-//    assert(wait_status.type == WaitStatus::Stop);
-//    MonitorCallback(wait_pid, wait_status.status);
-//  }
+  bool exited = wait_status.type == WaitStatus::Exit ||
+                (wait_status.type == WaitStatus::Signal &&
+                 wait_pid == static_cast<::pid_t>(GetID()));
+
+  LLDB_LOG(log,
+           "waitpid ({0}, &status, _) => pid = {1}, status = {2}, exited = {3}",
+           GetID(), wait_pid, status, exited);
+
+  if (exited)
+    MonitorExited(wait_pid, wait_status);
+  else {
+    assert(wait_status.type == WaitStatus::Stop);
+    MonitorCallback(wait_pid, wait_status.status);
+  }
 }
 
 bool NativeProcessHaiku::HasThreadNoLock(lldb::tid_t thread_id) {
