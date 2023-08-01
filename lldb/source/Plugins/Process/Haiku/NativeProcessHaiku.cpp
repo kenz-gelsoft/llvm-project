@@ -322,7 +322,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
     SetState(StateType::eStateStopped, true);
     return;
   case B_DEBUGGER_MESSAGE_TEAM_EXEC: {
-    if (message.origin.thread == pid)
+    if (message.origin.team == pid)
       return;
 
     Status error = ReinitializeThreads();
@@ -341,14 +341,14 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   }
   case B_DEBUGGER_MESSAGE_THREAD_CREATED: {
       LLDB_LOG(log, "monitoring new thread, pid = {0}, LWP = {1}", pid,
-               message.origin.thread);
+               message.thread_created.new_thread);
       NativeThreadHaiku &t = AddThread(message.thread_created.new_thread);
       Status error;
       error = t.CopyWatchpointsFrom(
           static_cast<NativeThreadHaiku &>(*GetCurrentThread()));
       if (error.Fail()) {
         LLDB_LOG(log, "failed to copy watchpoints to new thread {0}: {1}",
-                 message.origin.thread, error);
+                 message.thread_created.new_thread, error);
         SetState(StateType::eStateInvalid);
         return;
       }
@@ -654,8 +654,6 @@ Status NativeProcessHaiku::Kill() {
 
 Status NativeProcessHaiku::GetMemoryRegionInfo(lldb::addr_t load_addr,
                                                 MemoryRegionInfo &range_info) {
-  return Status("unsupported");
-
   if (m_supports_mem_region == LazyBool::eLazyBoolNo) {
     // We're done.
     return Status("unsupported");
@@ -719,45 +717,42 @@ Status NativeProcessHaiku::PopulateMemoryRegionCache() {
     return Status();
   }
 
-  assert(false);
-//  struct kinfo_vmentry *vm;
-  size_t count, i;
-//  vm = kinfo_getvmmap(GetID(), &count);
-//  if (vm == NULL) {
-    m_supports_mem_region = LazyBool::eLazyBoolNo;
-    Status error;
-    error.SetErrorString("not supported");
-    return error;
-//  }
-//  for (i = 0; i < count; i++) {
-//    MemoryRegionInfo info;
-//    info.Clear();
-//    info.GetRange().SetRangeBase(vm[i].kve_start);
-//    info.GetRange().SetRangeEnd(vm[i].kve_end);
-//    info.SetMapped(MemoryRegionInfo::OptionalBool::eYes);
-//
-//    if (vm[i].kve_protection & VM_PROT_READ)
-//      info.SetReadable(MemoryRegionInfo::OptionalBool::eYes);
-//    else
-//      info.SetReadable(MemoryRegionInfo::OptionalBool::eNo);
-//
-//    if (vm[i].kve_protection & VM_PROT_WRITE)
-//      info.SetWritable(MemoryRegionInfo::OptionalBool::eYes);
-//    else
-//      info.SetWritable(MemoryRegionInfo::OptionalBool::eNo);
-//
-//    if (vm[i].kve_protection & VM_PROT_EXECUTE)
-//      info.SetExecutable(MemoryRegionInfo::OptionalBool::eYes);
-//    else
-//      info.SetExecutable(MemoryRegionInfo::OptionalBool::eNo);
-//
-//    if (vm[i].kve_path[0])
-//      info.SetName(vm[i].kve_path);
-//
-//    m_mem_region_cache.emplace_back(info,
-//                                    FileSpec(info.GetName().GetCString()));
-//  }
-//  free(vm);
+  status_t error;
+  ssize_t cookie = 0;
+  area_info area;
+  while ((error = get_next_area_info(GetID(), &cookie, &area)) == B_OK) {
+    MemoryRegionInfo info;
+    info.Clear();
+    lldb::addr_t area_base = reinterpret_cast<lldb::addr_t>(area.address);
+    lldb::addr_t area_size = reinterpret_cast<lldb::addr_t>(area.size);
+    info.GetRange().SetRangeBase(area_base);
+    info.GetRange().SetRangeEnd(area_base + area_size);
+    // FIXME: maybe need to set area is mapped or unmapped
+    info.SetMapped(MemoryRegionInfo::OptionalBool::eYes);
+
+    if (area.protection & B_READ_AREA)
+      info.SetReadable(MemoryRegionInfo::OptionalBool::eYes);
+    else
+      info.SetReadable(MemoryRegionInfo::OptionalBool::eNo);
+
+    if (area.protection & B_WRITE_AREA)
+      info.SetWritable(MemoryRegionInfo::OptionalBool::eYes);
+    else
+      info.SetWritable(MemoryRegionInfo::OptionalBool::eNo);
+
+    if (area.protection & B_EXECUTE_AREA)
+      info.SetExecutable(MemoryRegionInfo::OptionalBool::eYes);
+    else
+      info.SetExecutable(MemoryRegionInfo::OptionalBool::eNo);
+
+    // FIXME: we should set correct image path which
+    // corrected TEAM_EXEC or IMAGE_CREATED debugger event.
+    if (area.name)
+      info.SetName(area.name);
+
+    m_mem_region_cache.emplace_back(info,
+                                    FileSpec(info.GetName().GetCString()));
+  }
 
   if (m_mem_region_cache.empty()) {
     // No entries after attempting to read them.  This shouldn't happen. Assume
