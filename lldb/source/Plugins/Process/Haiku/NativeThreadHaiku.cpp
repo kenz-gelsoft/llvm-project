@@ -49,7 +49,7 @@ NativeRegisterContextHaiku::CreateHostNativeRegisterContextHaiku(process.GetArch
 
 Status NativeThreadHaiku::Resume() {
   Status ret;
-  status_t error = team_debugger->ContinueThread(m_process.GetID());
+  status_t error = team_debugger->ContinueThread(GetID());
   if (error != B_OK)
     ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
   if (ret.Success())
@@ -58,13 +58,11 @@ Status NativeThreadHaiku::Resume() {
 }
 
 Status NativeThreadHaiku::SingleStep() {
-  assert(false);
-  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
-//                                                  nullptr, GetID());
-  if (!ret.Success())
-    return ret;
-//  ret = NativeProcessHaiku::PtraceWrapper(PT_SETSTEP, m_process.GetID(),
-//                                           nullptr, GetID());
+  Status ret;
+  bool single_step = true;
+  status_t error = team_debugger->ContinueThread(GetID(), single_step);
+  if (error != B_OK)
+    ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
   if (ret.Success())
     SetStepping();
   return ret;

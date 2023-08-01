@@ -133,8 +133,8 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   }
   int32 flags =
       B_TEAM_DEBUG_THREADS |
-      B_TEAM_DEBUG_IMAGES |
-      B_TEAM_DEBUG_POST_SYSCALL |
+//      B_TEAM_DEBUG_IMAGES |
+//      B_TEAM_DEBUG_POST_SYSCALL |
       B_TEAM_DEBUG_SIGNALS |
       B_TEAM_DEBUG_TEAM_CREATION;
   error = team_debugger->SetTeamDebuggingFlags(flags);
@@ -322,6 +322,9 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
     SetState(StateType::eStateStopped, true);
     return;
   case B_DEBUGGER_MESSAGE_TEAM_EXEC: {
+    if (message.origin.thread == pid)
+      return;
+
     Status error = ReinitializeThreads();
     if (error.Fail()) {
       SetState(StateType::eStateInvalid);
@@ -339,7 +342,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   case B_DEBUGGER_MESSAGE_THREAD_CREATED: {
       LLDB_LOG(log, "monitoring new thread, pid = {0}, LWP = {1}", pid,
                message.origin.thread);
-      NativeThreadHaiku &t = AddThread(message.origin.thread);
+      NativeThreadHaiku &t = AddThread(message.thread_created.new_thread);
       Status error;
       error = t.CopyWatchpointsFrom(
           static_cast<NativeThreadHaiku &>(*GetCurrentThread()));
@@ -349,23 +352,28 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
         SetState(StateType::eStateInvalid);
         return;
       }
-      if (team_debugger->ContinueThread(pid, true) != B_OK)
+      bool single_step = false;
+      if (team_debugger->ContinueThread(message.origin.thread,
+          single_step) != B_OK)
         SetState(StateType::eStateInvalid);
       return;
     } break;
-  case B_DEBUGGER_MESSAGE_THREAD_DELETED:
+  case B_DEBUGGER_MESSAGE_THREAD_DELETED: {
       LLDB_LOG(log, "removing exited thread, pid = {0}, LWP = {1}", pid,
                message.origin.thread);
       RemoveThread(message.origin.thread);
-      if (team_debugger->ContinueThread(pid, true) != B_OK)
+      bool single_step = false;
+      if (team_debugger->ContinueThread(message.origin.thread,
+          single_step) != B_OK)
         SetState(StateType::eStateInvalid);
       return;
-      break;
-  case B_DEBUGGER_MESSAGE_THREAD_DEBUGGED:
-  case B_DEBUGGER_MESSAGE_IMAGE_CREATED:
+    } break;
+//  case B_DEBUGGER_MESSAGE_THREAD_DEBUGGED:
+//  case B_DEBUGGER_MESSAGE_IMAGE_CREATED:
   case B_DEBUGGER_MESSAGE_SINGLE_STEP:
-  case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED:
-  case B_DEBUGGER_MESSAGE_POST_SYSCALL: {
+//  case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED:
+//  case B_DEBUGGER_MESSAGE_POST_SYSCALL:
+  {
     if (!thread)
       break;
 
@@ -396,6 +404,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   // otherwise leave the debugger hanging.
   LLDB_LOG(log, "unknown SIGTRAP, passing to generic handler");
 //  MonitorSignal(pid, SIGTRAP);
+  team_debugger->ContinueThread(message.origin.thread);
 }
 
 void NativeProcessHaiku::MonitorSignal(lldb::pid_t pid, int signal) {
@@ -822,7 +831,8 @@ Status NativeProcessHaiku::GetFileLoadAddress(const llvm::StringRef &file_name,
 void NativeProcessHaiku::SigchldHandler() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   // Process all pending waitpid notifications.
-  int status;  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, waitpid, GetID(), &status,
+  int status;
+  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, waitpid, GetID(), &status,
                                                  WNOHANG);
 
   if (wait_pid == 0)
