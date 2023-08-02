@@ -582,27 +582,6 @@ void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
     break;
   }
 
-  case SI_KERNEL:
-#if defined __mips__
-    // For mips there is no special signal for watchpoint So we check for
-    // watchpoint in kernel trap
-    {
-      // If a watchpoint was hit, report it
-      uint32_t wp_index;
-      Status error = thread.GetRegisterContext().GetWatchpointHitIndex(
-          wp_index, LLDB_INVALID_ADDRESS);
-      if (error.Fail())
-        LLDB_LOG(log,
-                 "received error while checking for watchpoint hits, pid = "
-                 "{0}, error = {1}",
-                 thread.GetID(), error);
-      if (wp_index != LLDB_INVALID_INDEX32) {
-        MonitorWatchpoint(thread, wp_index);
-        break;
-      }
-    }
-// NO BREAK
-#endif
   case TRAP_BRKPT:
     MonitorBreakpoint(thread);
     break;
