@@ -66,38 +66,6 @@ using namespace llvm;
 
 // Private bits we only need internally.
 
-static bool ProcessVmReadvSupported() {
-  static bool is_supported;
-  static llvm::once_flag flag;
-
-  llvm::call_once(flag, [] {
-    Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
-
-    uint32_t source = 0x47424742;
-    uint32_t dest = 0;
-
-    struct iovec local, remote;
-    remote.iov_base = &source;
-    local.iov_base = &dest;
-    remote.iov_len = local.iov_len = sizeof source;
-
-    // We shall try if cross-process-memory reads work by attempting to read a
-    // value from our own process.
-    ssize_t res = process_vm_readv(getpid(), &local, 1, &remote, 1, 0);
-    is_supported = (res == sizeof(source) && source == dest);
-    if (is_supported)
-      LLDB_LOG(log,
-               "Detected kernel support for process_vm_readv syscall. "
-               "Fast memory reads enabled.");
-    else
-      LLDB_LOG(log,
-               "syscall process_vm_readv failed (error: {0}). Fast memory "
-               "reads disabled.",
-               llvm::sys::StrError());
-  });
-
-  return is_supported;
-}
 
 namespace {
 void MaybeLogLaunchInfo(const ProcessLaunchInfo &info) {
@@ -1534,33 +1502,6 @@ NativeProcessHaiku::GetSoftwareBreakpointTrapOpcode(size_t size_hint) {
 
 Status NativeProcessHaiku::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
                                       size_t &bytes_read) {
-  if (ProcessVmReadvSupported()) {
-    // The process_vm_readv path is about 50 times faster than ptrace api. We
-    // want to use this syscall if it is supported.
-
-    const ::pid_t pid = GetID();
-
-    struct iovec local_iov, remote_iov;
-    local_iov.iov_base = buf;
-    local_iov.iov_len = size;
-    remote_iov.iov_base = reinterpret_cast<void *>(addr);
-    remote_iov.iov_len = size;
-
-    bytes_read = process_vm_readv(pid, &local_iov, 1, &remote_iov, 1, 0);
-    const bool success = bytes_read == size;
-
-    Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
-    LLDB_LOG(log,
-             "using process_vm_readv to read {0} bytes from inferior "
-             "address {1:x}: {2}",
-             size, addr, success ? "Success" : llvm::sys::StrError(errno));
-
-    if (success)
-      return Status();
-    // else the call failed for some reason, let's retry the read using ptrace
-    // api.
-  }
-
   unsigned char *dst = static_cast<unsigned char *>(buf);
   size_t remainder;
   long data;
