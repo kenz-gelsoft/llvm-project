@@ -1,4 +1,4 @@
-//===-- NativeProcessHaiku.h ---------------------------------- -*- C++ -*-===//
+//===-- NativeProcessLinux.h ---------------------------------- -*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,32 +6,37 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_NativeProcessHaiku_H_
-#define liblldb_NativeProcessHaiku_H_
+#ifndef liblldb_NativeProcessLinux_H_
+#define liblldb_NativeProcessLinux_H_
 
-#include "Plugins/Process/POSIX/NativeProcessELF.h"
+#include <csignal>
+#include <unordered_set>
+
+#include "lldb/Host/Debug.h"
+#include "lldb/Host/HostThread.h"
+#include "lldb/Host/linux/Support.h"
 #include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/FileSpec.h"
+#include "lldb/lldb-types.h"
 
-#include "NativeThreadHaiku.h"
-
-class BTeamDebugger;
+#include "NativeThreadLinux.h"
+#include "Plugins/Process/POSIX/NativeProcessELF.h"
+#include "ProcessorTrace.h"
 
 namespace lldb_private {
-namespace process_haiku {
+class Status;
+class Scalar;
 
-// FIXME: make per-team, threadsafe (if needed)
-extern std::shared_ptr<BTeamDebugger> team_debugger;
-
-/// \class NativeProcessHaiku
+namespace process_linux {
+/// \class NativeProcessLinux
 /// Manages communication with the inferior (debugee) process.
 ///
 /// Upon construction, this class prepares and launches an inferior process
 /// for debugging.
 ///
 /// Changes in the inferior process state are broadcasted.
-class NativeProcessHaiku : public NativeProcessELF {
+class NativeProcessLinux : public NativeProcessELF {
 public:
   class Factory : public NativeProcessProtocol::Factory {
   public:
@@ -66,7 +71,10 @@ public:
   Status WriteMemory(lldb::addr_t addr, const void *buf, size_t size,
                      size_t &bytes_written) override;
 
-  lldb::addr_t GetSharedLibraryInfoAddress() override;
+  llvm::Expected<lldb::addr_t> AllocateMemory(size_t size,
+                                              uint32_t permissions) override;
+
+  llvm::Error DeallocateMemory(lldb::addr_t addr) override;
 
   size_t UpdateThreads() override;
 
@@ -75,56 +83,178 @@ public:
   Status SetBreakpoint(lldb::addr_t addr, uint32_t size,
                        bool hardware) override;
 
-  // The two following methods are probably not necessary and probably
-  // will never be called.  Nevertheless, we implement them right now
-  // to reduce the differences between different platforms and reduce
-  // the risk of the lack of implementation actually breaking something,
-  // at least for the time being.
+  Status RemoveBreakpoint(lldb::addr_t addr, bool hardware = false) override;
+
+  void DoStopIDBumped(uint32_t newBumpId) override;
+
   Status GetLoadedModuleFileSpec(const char *module_path,
                                  FileSpec &file_spec) override;
+
   Status GetFileLoadAddress(const llvm::StringRef &file_name,
                             lldb::addr_t &load_addr) override;
 
+  NativeThreadLinux *GetThreadByID(lldb::tid_t id);
+  NativeThreadLinux *GetCurrentThread();
+
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-  GetAuxvData() const override;
+  GetAuxvData() const override {
+    return getProcFile(GetID(), "auxv");
+  }
+
+  lldb::user_id_t StartTrace(const TraceOptions &config,
+                             Status &error) override;
+
+  Status StopTrace(lldb::user_id_t traceid,
+                   lldb::tid_t thread) override;
+
+  Status GetData(lldb::user_id_t traceid, lldb::tid_t thread,
+                 llvm::MutableArrayRef<uint8_t> &buffer,
+                 size_t offset = 0) override;
+
+  Status GetMetaData(lldb::user_id_t traceid, lldb::tid_t thread,
+                     llvm::MutableArrayRef<uint8_t> &buffer,
+                     size_t offset = 0) override;
+
+  Status GetTraceConfig(lldb::user_id_t traceid, TraceOptions &config) override;
+
+  virtual llvm::Expected<TraceTypeInfo> GetSupportedTraceType() override;
 
   // Interface used by NativeRegisterContext-derived classes.
   static Status PtraceWrapper(int req, lldb::pid_t pid, void *addr = nullptr,
-                              int data = 0, int *result = nullptr);
+                              void *data = nullptr, size_t data_size = 0,
+                              long *result = nullptr);
+
+  bool SupportHardwareSingleStepping() const;
+
+protected:
+  llvm::Expected<llvm::ArrayRef<uint8_t>>
+  GetSoftwareBreakpointTrapOpcode(size_t size_hint) override;
+
+  llvm::Expected<uint64_t> Syscall(llvm::ArrayRef<uint64_t> args);
 
 private:
   MainLoop::SignalHandleUP m_sigchld_handle;
   ArchSpec m_arch;
+
   LazyBool m_supports_mem_region = eLazyBoolCalculate;
   std::vector<std::pair<MemoryRegionInfo, FileSpec>> m_mem_region_cache;
-  HostThread m_port_thread;
 
-  static void *PortReadThread(void *arg);
+  lldb::tid_t m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
+
+  // List of thread ids stepping with a breakpoint with the address of
+  // the relevan breakpoint
+  std::map<lldb::tid_t, lldb::addr_t> m_threads_stepping_with_breakpoint;
+
+  /// Inferior memory (allocated by us) and its size.
+  llvm::DenseMap<lldb::addr_t, lldb::addr_t> m_allocated_memory;
 
   // Private Instance Methods
-  NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
-                      const ArchSpec &arch, MainLoop &mainloop);
+  NativeProcessLinux(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
+                     const ArchSpec &arch, MainLoop &mainloop,
+                     llvm::ArrayRef<::pid_t> tids);
+
+  // Returns a list of process threads that we have attached to.
+  static llvm::Expected<std::vector<::pid_t>> Attach(::pid_t pid);
+
+  static Status SetDefaultPtraceOpts(const lldb::pid_t);
+
+  void MonitorCallback(lldb::pid_t pid, bool exited, WaitStatus status);
+
+  void WaitForNewThread(::pid_t tid);
+
+  void MonitorSIGTRAP(const siginfo_t &info, NativeThreadLinux &thread);
+
+  void MonitorTrace(NativeThreadLinux &thread);
+
+  void MonitorBreakpoint(NativeThreadLinux &thread);
+
+  void MonitorWatchpoint(NativeThreadLinux &thread, uint32_t wp_index);
+
+  void MonitorSignal(const siginfo_t &info, NativeThreadLinux &thread,
+                     bool exited);
+
+  Status SetupSoftwareSingleStepping(NativeThreadLinux &thread);
 
   bool HasThreadNoLock(lldb::tid_t thread_id);
 
-  NativeThreadHaiku &AddThread(lldb::tid_t thread_id);
-  void RemoveThread(lldb::tid_t thread_id);
+  bool StopTrackingThread(lldb::tid_t thread_id);
 
-  void MonitorCallback(lldb::pid_t pid, int signal);
-  void MonitorExited(lldb::pid_t pid, WaitStatus status);
-  void MonitorSIGSTOP(lldb::pid_t pid);
-  void MonitorPort(lldb::pid_t pid, int i);
-  void MonitorSignal(lldb::pid_t pid, int signal);
+  NativeThreadLinux &AddThread(lldb::tid_t thread_id);
 
-  Status PopulateMemoryRegionCache();
+  /// Writes a siginfo_t structure corresponding to the given thread ID to the
+  /// memory region pointed to by \p siginfo.
+  Status GetSignalInfo(lldb::tid_t tid, void *siginfo);
+
+  /// Writes the raw event message code (vis-a-vis PTRACE_GETEVENTMSG)
+  /// corresponding to the given thread ID to the memory pointed to by @p
+  /// message.
+  Status GetEventMessage(lldb::tid_t tid, unsigned long *message);
+
+  void NotifyThreadDeath(lldb::tid_t tid);
+
+  Status Detach(lldb::tid_t tid);
+
+  // This method is requests a stop on all threads which are still running. It
+  // sets up a
+  // deferred delegate notification, which will fire once threads report as
+  // stopped. The
+  // triggerring_tid will be set as the current thread (main stop reason).
+  void StopRunningThreads(lldb::tid_t triggering_tid);
+
+  // Notify the delegate if all threads have stopped.
+  void SignalIfAllThreadsStopped();
+
+  // Resume the given thread, optionally passing it the given signal. The type
+  // of resume
+  // operation (continue, single-step) depends on the state parameter.
+  Status ResumeThread(NativeThreadLinux &thread, lldb::StateType state,
+                      int signo);
+
+  void ThreadWasCreated(NativeThreadLinux &thread);
+
   void SigchldHandler();
 
-  Status Attach();
-  Status SetupTrace();
-  Status ReinitializeThreads();
+  Status PopulateMemoryRegionCache();
+
+  lldb::user_id_t StartTraceGroup(const TraceOptions &config,
+                                         Status &error);
+
+  // This function is intended to be used to stop tracing
+  // on a thread that exited.
+  Status StopTracingForThread(lldb::tid_t thread);
+
+  // The below function as the name suggests, looks up a ProcessorTrace
+  // instance from the m_processor_trace_monitor map. In the case of
+  // process tracing where the traceid passed would map to the complete
+  // process, it is mandatory to provide a threadid to obtain a trace
+  // instance (since ProcessorTrace is tied to a thread). In the other
+  // scenario that an individual thread is being traced, just the traceid
+  // is sufficient to obtain the actual ProcessorTrace instance.
+  llvm::Expected<ProcessorTraceMonitor &>
+  LookupProcessorTraceInstance(lldb::user_id_t traceid, lldb::tid_t thread);
+
+  // Stops tracing on individual threads being traced. Not intended
+  // to be used to stop tracing on complete process.
+  Status StopProcessorTracingOnThread(lldb::user_id_t traceid,
+                                      lldb::tid_t thread);
+
+  // Intended to stop tracing on complete process.
+  // Should not be used for stopping trace on
+  // individual threads.
+  void StopProcessorTracingOnProcess();
+
+  llvm::DenseMap<lldb::tid_t, ProcessorTraceMonitorUP>
+      m_processor_trace_monitor;
+
+  // Set for tracking threads being traced under
+  // same process user id.
+  llvm::DenseSet<lldb::tid_t> m_pt_traced_thread_group;
+
+  lldb::user_id_t m_pt_proces_trace_id = LLDB_INVALID_UID;
+  TraceOptions m_pt_process_trace_config;
 };
 
-} // namespace process_haiku
+} // namespace process_linux
 } // namespace lldb_private
 
-#endif // #ifndef liblldb_NativeProcessHaiku_H_
+#endif // #ifndef liblldb_NativeProcessLinux_H_
