@@ -149,16 +149,16 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   }
 
   // Wait for the child process to trap on its call to execve.
-  int wstatus;
-  ::pid_t wpid = llvm::sys::RetryAfterSignal(-1, ::waitpid, pid, &wstatus, 0);
-  assert(wpid == pid);
-  (void)wpid;
-  if (!WIFSTOPPED(wstatus)) {
-    LLDB_LOG(log, "Could not sync with inferior process: wstatus={1}",
-             WaitStatus::Decode(wstatus));
-    return llvm::make_error<StringError>("Could not sync with inferior process",
-                                         llvm::inconvertibleErrorCode());
-  }
+  // int wstatus;
+  // ::pid_t wpid = llvm::sys::RetryAfterSignal(-1, ::waitpid, pid, &wstatus, 0);
+  // assert(wpid == pid);
+  // (void)wpid;
+  // if (!WIFSTOPPED(wstatus)) {
+  //   LLDB_LOG(log, "Could not sync with inferior process: wstatus={1}",
+  //            WaitStatus::Decode(wstatus));
+  //   return llvm::make_error<StringError>("Could not sync with inferior process",
+  //                                        llvm::inconvertibleErrorCode());
+  // }
   LLDB_LOG(log, "inferior started, now in stopped state");
 
   ProcessInstanceInfo Info;
@@ -170,12 +170,6 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   // Set the architecture to the exe architecture.
   LLDB_LOG(log, "pid = {0:x}, detected architecture {1}", pid,
            Info.GetArchitecture().GetArchitectureName());
-
-  status = SetDefaultPtraceOpts(pid);
-  if (status.Fail()) {
-    LLDB_LOG(log, "failed to set default ptrace options: {0}", status);
-    return status.ToError();
-  }
 
   return std::unique_ptr<NativeProcessHaiku>(new NativeProcessHaiku(
       pid, launch_info.GetPTY().ReleasePrimaryFileDescriptor(), native_delegate,
@@ -275,9 +269,6 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
               std::error_code(errno, std::generic_category()));
         }
 
-        if ((status = SetDefaultPtraceOpts(tid)).Fail())
-          return status.ToError();
-
         LLDB_LOG(log, "adding tid = {0}", tid);
         it->second = true;
       }
@@ -297,25 +288,6 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
   for (const auto &p : tids_to_attach)
     tids.push_back(p.first);
   return std::move(tids);
-}
-
-Status NativeProcessHaiku::SetDefaultPtraceOpts(lldb::pid_t pid) {
-  long ptrace_opts = 0;
-
-  // Have the child raise an event on exit.  This is used to keep the child in
-  // limbo until it is destroyed.
-  ptrace_opts |= PTRACE_O_TRACEEXIT;
-
-  // Have the tracer trace threads which spawn in the inferior process.
-  // TODO: if we want to support tracing the inferiors' child, add the
-  // appropriate ptrace flags here (PTRACE_O_TRACEFORK, PTRACE_O_TRACEVFORK)
-  ptrace_opts |= PTRACE_O_TRACECLONE;
-
-  // Have the tracer notify us before execve returns (needed to disable legacy
-  // SIGTRAP generation)
-  ptrace_opts |= PTRACE_O_TRACEEXEC;
-
-  return PtraceWrapper(PTRACE_SETOPTIONS, pid, nullptr, (void *)ptrace_opts);
 }
 
 // Handles all waitpid events from the inferior process.
