@@ -106,8 +106,6 @@ public:
                               void *data = nullptr, size_t data_size = 0,
                               long *result = nullptr);
 
-  bool SupportHardwareSingleStepping() const;
-
 protected:
   llvm::Expected<llvm::ArrayRef<uint8_t>>
   GetSoftwareBreakpointTrapOpcode(size_t size_hint) override;
@@ -152,8 +150,6 @@ private:
 
   void MonitorSignal(const siginfo_t &info, NativeThreadHaiku &thread,
                      bool exited);
-
-  Status SetupSoftwareSingleStepping(NativeThreadHaiku &thread);
 
   bool HasThreadNoLock(lldb::tid_t thread_id);
 

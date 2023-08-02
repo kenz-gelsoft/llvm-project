@@ -23,7 +23,7 @@
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
 #include "Plugins/Process/Utility/HaikuProcMaps.h"
 #include "Procfs.h"
-#include "lldb/Core/EmulateInstruction.h"
+// #include "lldb/Core/EmulateInstruction.h"
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostProcess.h"
@@ -236,6 +236,7 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
   // Use a map to keep track of the threads which we have attached/need to
   // attach.
   Host::TidMap tids_to_attach;
+  assert(false);
   while (Host::FindProcessThreads(pid, tids_to_attach)) {
     for (Host::TidMap::iterator it = tids_to_attach.begin();
          it != tids_to_attach.end();) {
@@ -754,198 +755,9 @@ void NativeProcessHaiku::MonitorSignal(const siginfo_t &info,
   StopRunningThreads(thread.GetID());
 }
 
-namespace {
-
-struct EmulatorBaton {
-  NativeProcessHaiku &m_process;
-  NativeRegisterContext &m_reg_context;
-
-  // eRegisterKindDWARF -> RegsiterValue
-  std::unordered_map<uint32_t, RegisterValue> m_register_values;
-
-  EmulatorBaton(NativeProcessHaiku &process, NativeRegisterContext &reg_context)
-      : m_process(process), m_reg_context(reg_context) {}
-};
-
-} // anonymous namespace
-
-static size_t ReadMemoryCallback(EmulateInstruction *instruction, void *baton,
-                                 const EmulateInstruction::Context &context,
-                                 lldb::addr_t addr, void *dst, size_t length) {
-  EmulatorBaton *emulator_baton = static_cast<EmulatorBaton *>(baton);
-
-  size_t bytes_read;
-  emulator_baton->m_process.ReadMemory(addr, dst, length, bytes_read);
-  return bytes_read;
-}
-
-static bool ReadRegisterCallback(EmulateInstruction *instruction, void *baton,
-                                 const RegisterInfo *reg_info,
-                                 RegisterValue &reg_value) {
-  EmulatorBaton *emulator_baton = static_cast<EmulatorBaton *>(baton);
-
-  auto it = emulator_baton->m_register_values.find(
-      reg_info->kinds[eRegisterKindDWARF]);
-  if (it != emulator_baton->m_register_values.end()) {
-    reg_value = it->second;
-    return true;
-  }
-
-  // The emulator only fill in the dwarf regsiter numbers (and in some case the
-  // generic register numbers). Get the full register info from the register
-  // context based on the dwarf register numbers.
-  const RegisterInfo *full_reg_info =
-      emulator_baton->m_reg_context.GetRegisterInfo(
-          eRegisterKindDWARF, reg_info->kinds[eRegisterKindDWARF]);
-
-  Status error =
-      emulator_baton->m_reg_context.ReadRegister(full_reg_info, reg_value);
-  if (error.Success())
-    return true;
-
-  return false;
-}
-
-static bool WriteRegisterCallback(EmulateInstruction *instruction, void *baton,
-                                  const EmulateInstruction::Context &context,
-                                  const RegisterInfo *reg_info,
-                                  const RegisterValue &reg_value) {
-  EmulatorBaton *emulator_baton = static_cast<EmulatorBaton *>(baton);
-  emulator_baton->m_register_values[reg_info->kinds[eRegisterKindDWARF]] =
-      reg_value;
-  return true;
-}
-
-static size_t WriteMemoryCallback(EmulateInstruction *instruction, void *baton,
-                                  const EmulateInstruction::Context &context,
-                                  lldb::addr_t addr, const void *dst,
-                                  size_t length) {
-  return length;
-}
-
-static lldb::addr_t ReadFlags(NativeRegisterContext &regsiter_context) {
-  const RegisterInfo *flags_info = regsiter_context.GetRegisterInfo(
-      eRegisterKindGeneric, LLDB_REGNUM_GENERIC_FLAGS);
-  return regsiter_context.ReadRegisterAsUnsigned(flags_info,
-                                                 LLDB_INVALID_ADDRESS);
-}
-
-Status
-NativeProcessHaiku::SetupSoftwareSingleStepping(NativeThreadHaiku &thread) {
-  Status error;
-  NativeRegisterContext& register_context = thread.GetRegisterContext();
-
-  std::unique_ptr<EmulateInstruction> emulator_up(
-      EmulateInstruction::FindPlugin(m_arch, eInstructionTypePCModifying,
-                                     nullptr));
-
-  if (emulator_up == nullptr)
-    return Status("Instruction emulator not found!");
-
-  EmulatorBaton baton(*this, register_context);
-  emulator_up->SetBaton(&baton);
-  emulator_up->SetReadMemCallback(&ReadMemoryCallback);
-  emulator_up->SetReadRegCallback(&ReadRegisterCallback);
-  emulator_up->SetWriteMemCallback(&WriteMemoryCallback);
-  emulator_up->SetWriteRegCallback(&WriteRegisterCallback);
-
-  if (!emulator_up->ReadInstruction())
-    return Status("Read instruction failed!");
-
-  bool emulation_result =
-      emulator_up->EvaluateInstruction(eEmulateInstructionOptionAutoAdvancePC);
-
-  const RegisterInfo *reg_info_pc = register_context.GetRegisterInfo(
-      eRegisterKindGeneric, LLDB_REGNUM_GENERIC_PC);
-  const RegisterInfo *reg_info_flags = register_context.GetRegisterInfo(
-      eRegisterKindGeneric, LLDB_REGNUM_GENERIC_FLAGS);
-
-  auto pc_it =
-      baton.m_register_values.find(reg_info_pc->kinds[eRegisterKindDWARF]);
-  auto flags_it =
-      baton.m_register_values.find(reg_info_flags->kinds[eRegisterKindDWARF]);
-
-  lldb::addr_t next_pc;
-  lldb::addr_t next_flags;
-  if (emulation_result) {
-    assert(pc_it != baton.m_register_values.end() &&
-           "Emulation was successfull but PC wasn't updated");
-    next_pc = pc_it->second.GetAsUInt64();
-
-    if (flags_it != baton.m_register_values.end())
-      next_flags = flags_it->second.GetAsUInt64();
-    else
-      next_flags = ReadFlags(register_context);
-  } else if (pc_it == baton.m_register_values.end()) {
-    // Emulate instruction failed and it haven't changed PC. Advance PC with
-    // the size of the current opcode because the emulation of all
-    // PC modifying instruction should be successful. The failure most
-    // likely caused by a not supported instruction which don't modify PC.
-    next_pc = register_context.GetPC() + emulator_up->GetOpcode().GetByteSize();
-    next_flags = ReadFlags(register_context);
-  } else {
-    // The instruction emulation failed after it modified the PC. It is an
-    // unknown error where we can't continue because the next instruction is
-    // modifying the PC but we don't  know how.
-    return Status("Instruction emulation failed unexpectedly.");
-  }
-
-  if (m_arch.GetMachine() == llvm::Triple::arm) {
-    if (next_flags & 0x20) {
-      // Thumb mode
-      error = SetSoftwareBreakpoint(next_pc, 2);
-    } else {
-      // Arm mode
-      error = SetSoftwareBreakpoint(next_pc, 4);
-    }
-  } else if (m_arch.IsMIPS() || m_arch.GetTriple().isPPC64())
-    error = SetSoftwareBreakpoint(next_pc, 4);
-  else {
-    // No size hint is given for the next breakpoint
-    error = SetSoftwareBreakpoint(next_pc, 0);
-  }
-
-  // If setting the breakpoint fails because next_pc is out of the address
-  // space, ignore it and let the debugee segfault.
-  if (error.GetError() == EIO || error.GetError() == EFAULT) {
-    return Status();
-  } else if (error.Fail())
-    return error;
-
-  m_threads_stepping_with_breakpoint.insert({thread.GetID(), next_pc});
-
-  return Status();
-}
-
-bool NativeProcessHaiku::SupportHardwareSingleStepping() const {
-  if (m_arch.GetMachine() == llvm::Triple::arm || m_arch.IsMIPS())
-    return false;
-  return true;
-}
-
 Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   LLDB_LOG(log, "pid {0}", GetID());
-
-  bool software_single_step = !SupportHardwareSingleStepping();
-
-  if (software_single_step) {
-    for (const auto &thread : m_threads) {
-      assert(thread && "thread list should not contain NULL threads");
-
-      const ResumeAction *const action =
-          resume_actions.GetActionForThread(thread->GetID(), true);
-      if (action == nullptr)
-        continue;
-
-      if (action->state == eStateStepping) {
-        Status error = SetupSoftwareSingleStepping(
-            static_cast<NativeThreadHaiku &>(*thread));
-        if (error.Fail())
-          return error;
-      }
-    }
-  }
 
   for (const auto &thread : m_threads) {
     assert(thread && "thread list should not contain NULL threads");
@@ -1189,7 +1001,8 @@ Status NativeProcessHaiku::PopulateMemoryRegionCache() {
   }
 
   Status Result;
-  HaikuMapCallback callback = [&](llvm::Expected<MemoryRegionInfo> Info) {
+#if 0
+  LinuxMapCallback callback = [&](llvm::Expected<MemoryRegionInfo> Info) {
     if (Info) {
       FileSpec file_spec(Info->GetName().GetCString());
       FileSystem::Instance().Resolve(file_spec);
@@ -1203,11 +1016,11 @@ Status NativeProcessHaiku::PopulateMemoryRegionCache() {
     return false;
   };
 
-  // Haiku kernel since 2.6.14 has /proc/{pid}/smaps
+  // Linux kernel since 2.6.14 has /proc/{pid}/smaps
   // if CONFIG_PROC_PAGE_MONITOR is enabled
   auto BufferOrError = getProcFile(GetID(), "smaps");
   if (BufferOrError)
-    ParseHaikuSMapRegions(BufferOrError.get()->getBuffer(), callback);
+    ParseLinuxSMapRegions(BufferOrError.get()->getBuffer(), callback);
   else {
     BufferOrError = getProcFile(GetID(), "maps");
     if (!BufferOrError) {
@@ -1215,8 +1028,9 @@ Status NativeProcessHaiku::PopulateMemoryRegionCache() {
       return BufferOrError.getError();
     }
 
-    ParseHaikuMapRegions(BufferOrError.get()->getBuffer(), callback);
+    ParseLinuxMapRegions(BufferOrError.get()->getBuffer(), callback);
   }
+#endif
 
   if (Result.Fail())
     return Result;
@@ -1302,11 +1116,8 @@ NativeProcessHaiku::Syscall(llvm::ArrayRef<uint64_t> args) {
 
   m_mem_region_cache.clear();
 
-  // With software single stepping the syscall insn buffer must also include a
-  // trap instruction to stop the process.
-  int req = SupportHardwareSingleStepping() ? PTRACE_SINGLESTEP : PTRACE_CONT;
   if (llvm::Error Err =
-          PtraceWrapper(req, thread.GetID(), nullptr, nullptr).ToError())
+          PtraceWrapper(PTRACE_SINGLESTEP, thread.GetID(), nullptr, nullptr).ToError())
     return std::move(Err);
 
   int status;
