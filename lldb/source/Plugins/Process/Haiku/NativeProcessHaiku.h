@@ -110,10 +110,6 @@ private:
 
   lldb::tid_t m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
 
-  // List of thread ids stepping with a breakpoint with the address of
-  // the relevan breakpoint
-  std::map<lldb::tid_t, lldb::addr_t> m_threads_stepping_with_breakpoint;
-
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
                      const ArchSpec &arch, MainLoop &mainloop,

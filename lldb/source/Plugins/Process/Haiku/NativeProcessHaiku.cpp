@@ -54,11 +54,6 @@
 #include <sys/user.h>
 #include <sys/wait.h>
 
-// Support hardware breakpoints in case it has not been defined
-#ifndef TRAP_HWBKPT
-#define TRAP_HWBKPT 4
-#endif
-
 using namespace lldb;
 using namespace lldb_private;
 using namespace lldb_private::process_haiku;
@@ -548,7 +543,7 @@ void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
 
   case 0:
   case TRAP_TRACE:  // We receive this on single stepping.
-  case TRAP_HWBKPT: // We receive this on watchpoint hit
+  // case TRAP_HWBKPT: // We receive this on watchpoint hit
   {
     // If a watchpoint was hit, report it
     uint32_t wp_index;
@@ -561,19 +556,6 @@ void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
                thread.GetID(), error);
     if (wp_index != LLDB_INVALID_INDEX32) {
       MonitorWatchpoint(thread, wp_index);
-      break;
-    }
-
-    // If a breakpoint was hit, report it
-    uint32_t bp_index;
-    error = thread.GetRegisterContext().GetHardwareBreakHitIndex(
-        bp_index, (uintptr_t)info.si_addr);
-    if (error.Fail())
-      LLDB_LOG(log, "received error while checking for hardware "
-                    "breakpoint hits, pid = {0}, error = {1}",
-               thread.GetID(), error);
-    if (bp_index != LLDB_INVALID_INDEX32) {
-      MonitorBreakpoint(thread);
       break;
     }
 
@@ -623,10 +605,6 @@ void NativeProcessHaiku::MonitorBreakpoint(NativeThreadHaiku &thread) {
   // Mark the thread as stopped at breakpoint.
   thread.SetStoppedByBreakpoint();
   FixupBreakpointPCAsNeeded(thread);
-
-  if (m_threads_stepping_with_breakpoint.find(thread.GetID()) !=
-      m_threads_stepping_with_breakpoint.end())
-    thread.SetStoppedByTrace();
 
   StopRunningThreads(thread.GetID());
 }
@@ -1051,14 +1029,14 @@ size_t NativeProcessHaiku::UpdateThreads() {
 Status NativeProcessHaiku::SetBreakpoint(lldb::addr_t addr, uint32_t size,
                                          bool hardware) {
   if (hardware)
-    return SetHardwareBreakpoint(addr, size);
+    return Status("NativeProcessHaiku does not support hardware breakpoints");
   else
     return SetSoftwareBreakpoint(addr, size);
 }
 
 Status NativeProcessHaiku::RemoveBreakpoint(lldb::addr_t addr, bool hardware) {
   if (hardware)
-    return RemoveHardwareBreakpoint(addr);
+    return Status("NativeProcessHaiku does not support hardware breakpoints");
   else
     return NativeProcessProtocol::RemoveBreakpoint(addr);
 }
@@ -1315,16 +1293,6 @@ void NativeProcessHaiku::SignalIfAllThreadsStopped() {
   // We have a pending notification and all threads have stopped.
   Log *log(
       GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_BREAKPOINTS));
-
-  // Clear any temporary breakpoints we used to implement software single
-  // stepping.
-  for (const auto &thread_info : m_threads_stepping_with_breakpoint) {
-    Status error = RemoveBreakpoint(thread_info.second);
-    if (error.Fail())
-      LLDB_LOG(log, "pid = {0} remove stepping breakpoint: {1}",
-               thread_info.first, error);
-  }
-  m_threads_stepping_with_breakpoint.clear();
 
   // Notify the delegate about the stop
   SetCurrentThreadID(m_pending_notification_tid);
