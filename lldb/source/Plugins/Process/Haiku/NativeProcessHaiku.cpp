@@ -68,6 +68,7 @@ using namespace llvm;
 
 
 namespace {
+
 void MaybeLogLaunchInfo(const ProcessLaunchInfo &info) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   if (!log)
@@ -100,53 +101,6 @@ void DisplayBytes(StreamString &s, void *bytes, uint32_t count) {
   for (uint32_t i = 0; i < loop_count; i++) {
     s.Printf("[%x]", *ptr);
     ptr++;
-  }
-}
-
-void PtraceDisplayBytes(int &req, void *data, size_t data_size) {
-  Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
-  if (!log)
-    return;
-  StreamString buf;
-
-  switch (req) {
-  case PTRACE_POKETEXT: {
-    DisplayBytes(buf, &data, 8);
-    LLDB_LOGV(log, "PTRACE_POKETEXT {0}", buf.GetData());
-    break;
-  }
-  case PTRACE_POKEDATA: {
-    DisplayBytes(buf, &data, 8);
-    LLDB_LOGV(log, "PTRACE_POKEDATA {0}", buf.GetData());
-    break;
-  }
-  case PTRACE_POKEUSER: {
-    DisplayBytes(buf, &data, 8);
-    LLDB_LOGV(log, "PTRACE_POKEUSER {0}", buf.GetData());
-    break;
-  }
-  case PTRACE_SETREGS: {
-    DisplayBytes(buf, data, data_size);
-    LLDB_LOGV(log, "PTRACE_SETREGS {0}", buf.GetData());
-    break;
-  }
-  case PTRACE_SETFPREGS: {
-    DisplayBytes(buf, data, data_size);
-    LLDB_LOGV(log, "PTRACE_SETFPREGS {0}", buf.GetData());
-    break;
-  }
-  case PTRACE_SETSIGINFO: {
-    DisplayBytes(buf, data, sizeof(siginfo_t));
-    LLDB_LOGV(log, "PTRACE_SETSIGINFO {0}", buf.GetData());
-    break;
-  }
-  case PTRACE_SETREGSET: {
-    // Extract iov_base from data, which is a pointer to the struct iovec
-    DisplayBytes(buf, *(void **)data, data_size);
-    LLDB_LOGV(log, "PTRACE_SETREGSET {0}", buf.GetData());
-    break;
-  }
-  default: {}
   }
 }
 
@@ -1840,8 +1794,6 @@ Status NativeProcessHaiku::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
 
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
 
-  PtraceDisplayBytes(req, data, data_size);
-
   errno = 0;
   if (req == PTRACE_GETREGSET || req == PTRACE_SETREGSET)
     ret = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid),
@@ -1858,8 +1810,6 @@ Status NativeProcessHaiku::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
 
   LLDB_LOG(log, "ptrace({0}, {1}, {2}, {3}, {4})={5:x}", req, pid, addr, data,
            data_size, ret);
-
-  PtraceDisplayBytes(req, data, data_size);
 
   if (error.Fail())
     LLDB_LOG(log, "ptrace() failed: {0}", error);
