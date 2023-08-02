@@ -1,4 +1,4 @@
-//===-- NativeProcessLinux.h ---------------------------------- -*- C++ -*-===//
+//===-- NativeProcessHaiku.h ---------------------------------- -*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,21 +6,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef liblldb_NativeProcessLinux_H_
-#define liblldb_NativeProcessLinux_H_
+#ifndef liblldb_NativeProcessHaiku_H_
+#define liblldb_NativeProcessHaiku_H_
 
 #include <csignal>
 #include <unordered_set>
 
 #include "lldb/Host/Debug.h"
 #include "lldb/Host/HostThread.h"
-#include "lldb/Host/linux/Support.h"
+#include "lldb/Host/haiku/Support.h"
 #include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/lldb-types.h"
 
-#include "NativeThreadLinux.h"
+#include "NativeThreadHaiku.h"
 #include "Plugins/Process/POSIX/NativeProcessELF.h"
 #include "ProcessorTrace.h"
 
@@ -28,15 +28,15 @@ namespace lldb_private {
 class Status;
 class Scalar;
 
-namespace process_linux {
-/// \class NativeProcessLinux
+namespace process_haiku {
+/// \class NativeProcessHaiku
 /// Manages communication with the inferior (debugee) process.
 ///
 /// Upon construction, this class prepares and launches an inferior process
 /// for debugging.
 ///
 /// Changes in the inferior process state are broadcasted.
-class NativeProcessLinux : public NativeProcessELF {
+class NativeProcessHaiku : public NativeProcessELF {
 public:
   class Factory : public NativeProcessProtocol::Factory {
   public:
@@ -93,8 +93,8 @@ public:
   Status GetFileLoadAddress(const llvm::StringRef &file_name,
                             lldb::addr_t &load_addr) override;
 
-  NativeThreadLinux *GetThreadByID(lldb::tid_t id);
-  NativeThreadLinux *GetCurrentThread();
+  NativeThreadHaiku *GetThreadByID(lldb::tid_t id);
+  NativeThreadHaiku *GetCurrentThread();
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
   GetAuxvData() const override {
@@ -149,7 +149,7 @@ private:
   llvm::DenseMap<lldb::addr_t, lldb::addr_t> m_allocated_memory;
 
   // Private Instance Methods
-  NativeProcessLinux(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
+  NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
                      const ArchSpec &arch, MainLoop &mainloop,
                      llvm::ArrayRef<::pid_t> tids);
 
@@ -162,24 +162,24 @@ private:
 
   void WaitForNewThread(::pid_t tid);
 
-  void MonitorSIGTRAP(const siginfo_t &info, NativeThreadLinux &thread);
+  void MonitorSIGTRAP(const siginfo_t &info, NativeThreadHaiku &thread);
 
-  void MonitorTrace(NativeThreadLinux &thread);
+  void MonitorTrace(NativeThreadHaiku &thread);
 
-  void MonitorBreakpoint(NativeThreadLinux &thread);
+  void MonitorBreakpoint(NativeThreadHaiku &thread);
 
-  void MonitorWatchpoint(NativeThreadLinux &thread, uint32_t wp_index);
+  void MonitorWatchpoint(NativeThreadHaiku &thread, uint32_t wp_index);
 
-  void MonitorSignal(const siginfo_t &info, NativeThreadLinux &thread,
+  void MonitorSignal(const siginfo_t &info, NativeThreadHaiku &thread,
                      bool exited);
 
-  Status SetupSoftwareSingleStepping(NativeThreadLinux &thread);
+  Status SetupSoftwareSingleStepping(NativeThreadHaiku &thread);
 
   bool HasThreadNoLock(lldb::tid_t thread_id);
 
   bool StopTrackingThread(lldb::tid_t thread_id);
 
-  NativeThreadLinux &AddThread(lldb::tid_t thread_id);
+  NativeThreadHaiku &AddThread(lldb::tid_t thread_id);
 
   /// Writes a siginfo_t structure corresponding to the given thread ID to the
   /// memory region pointed to by \p siginfo.
@@ -207,10 +207,10 @@ private:
   // Resume the given thread, optionally passing it the given signal. The type
   // of resume
   // operation (continue, single-step) depends on the state parameter.
-  Status ResumeThread(NativeThreadLinux &thread, lldb::StateType state,
+  Status ResumeThread(NativeThreadHaiku &thread, lldb::StateType state,
                       int signo);
 
-  void ThreadWasCreated(NativeThreadLinux &thread);
+  void ThreadWasCreated(NativeThreadHaiku &thread);
 
   void SigchldHandler();
 
@@ -254,7 +254,7 @@ private:
   TraceOptions m_pt_process_trace_config;
 };
 
-} // namespace process_linux
+} // namespace process_haiku
 } // namespace lldb_private
 
-#endif // #ifndef liblldb_NativeProcessLinux_H_
+#endif // #ifndef liblldb_NativeProcessHaiku_H_

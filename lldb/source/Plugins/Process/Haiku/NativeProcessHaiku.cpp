@@ -1,4 +1,4 @@
-//===-- NativeProcessLinux.cpp --------------------------------------------===//
+//===-- NativeProcessHaiku.cpp --------------------------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "NativeProcessLinux.h"
+#include "NativeProcessHaiku.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -19,9 +19,9 @@
 #include <string>
 #include <unordered_map>
 
-#include "NativeThreadLinux.h"
+#include "NativeThreadHaiku.h"
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
-#include "Plugins/Process/Utility/LinuxProcMaps.h"
+#include "Plugins/Process/Utility/HaikuProcMaps.h"
 #include "Procfs.h"
 #include "lldb/Core/EmulateInstruction.h"
 #include "lldb/Core/ModuleSpec.h"
@@ -31,8 +31,8 @@
 #include "lldb/Host/PseudoTerminal.h"
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/common/NativeRegisterContext.h"
-#include "lldb/Host/linux/Ptrace.h"
-#include "lldb/Host/linux/Uio.h"
+#include "lldb/Host/haiku/Ptrace.h"
+#include "lldb/Host/haiku/Uio.h"
 #include "lldb/Host/posix/ProcessLauncherPosixFork.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Target/Process.h"
@@ -47,7 +47,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Threading.h"
 
-#include <linux/unistd.h>
+#include <haiku/unistd.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -61,7 +61,7 @@
 
 using namespace lldb;
 using namespace lldb_private;
-using namespace lldb_private::process_linux;
+using namespace lldb_private::process_haiku;
 using namespace llvm;
 
 // Private bits we only need internally.
@@ -209,7 +209,7 @@ static Status EnsureFDFlags(int fd, int flags) {
 // Public Static Methods
 
 llvm::Expected<std::unique_ptr<NativeProcessProtocol>>
-NativeProcessLinux::Factory::Launch(ProcessLaunchInfo &launch_info,
+NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
                                     NativeDelegate &native_delegate,
                                     MainLoop &mainloop) const {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -255,13 +255,13 @@ NativeProcessLinux::Factory::Launch(ProcessLaunchInfo &launch_info,
     return status.ToError();
   }
 
-  return std::unique_ptr<NativeProcessLinux>(new NativeProcessLinux(
+  return std::unique_ptr<NativeProcessHaiku>(new NativeProcessHaiku(
       pid, launch_info.GetPTY().ReleasePrimaryFileDescriptor(), native_delegate,
       Info.GetArchitecture(), mainloop, {pid}));
 }
 
 llvm::Expected<std::unique_ptr<NativeProcessProtocol>>
-NativeProcessLinux::Factory::Attach(
+NativeProcessHaiku::Factory::Attach(
     lldb::pid_t pid, NativeProcessProtocol::NativeDelegate &native_delegate,
     MainLoop &mainloop) const {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -274,17 +274,17 @@ NativeProcessLinux::Factory::Attach(
                                          llvm::inconvertibleErrorCode());
   }
 
-  auto tids_or = NativeProcessLinux::Attach(pid);
+  auto tids_or = NativeProcessHaiku::Attach(pid);
   if (!tids_or)
     return tids_or.takeError();
 
-  return std::unique_ptr<NativeProcessLinux>(new NativeProcessLinux(
+  return std::unique_ptr<NativeProcessHaiku>(new NativeProcessHaiku(
       pid, -1, native_delegate, Info.GetArchitecture(), mainloop, *tids_or));
 }
 
 // Public Instance Methods
 
-NativeProcessLinux::NativeProcessLinux(::pid_t pid, int terminal_fd,
+NativeProcessHaiku::NativeProcessHaiku(::pid_t pid, int terminal_fd,
                                        NativeDelegate &delegate,
                                        const ArchSpec &arch, MainLoop &mainloop,
                                        llvm::ArrayRef<::pid_t> tids)
@@ -300,7 +300,7 @@ NativeProcessLinux::NativeProcessLinux(::pid_t pid, int terminal_fd,
   assert(m_sigchld_handle && status.Success());
 
   for (const auto &tid : tids) {
-    NativeThreadLinux &thread = AddThread(tid);
+    NativeThreadHaiku &thread = AddThread(tid);
     thread.SetStoppedBySignal(SIGSTOP);
     ThreadWasCreated(thread);
   }
@@ -313,7 +313,7 @@ NativeProcessLinux::NativeProcessLinux(::pid_t pid, int terminal_fd,
   SigchldHandler();
 }
 
-llvm::Expected<std::vector<::pid_t>> NativeProcessLinux::Attach(::pid_t pid) {
+llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
 
   Status status;
@@ -377,7 +377,7 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessLinux::Attach(::pid_t pid) {
   return std::move(tids);
 }
 
-Status NativeProcessLinux::SetDefaultPtraceOpts(lldb::pid_t pid) {
+Status NativeProcessHaiku::SetDefaultPtraceOpts(lldb::pid_t pid) {
   long ptrace_opts = 0;
 
   // Have the child raise an event on exit.  This is used to keep the child in
@@ -397,7 +397,7 @@ Status NativeProcessLinux::SetDefaultPtraceOpts(lldb::pid_t pid) {
 }
 
 // Handles all waitpid events from the inferior process.
-void NativeProcessLinux::MonitorCallback(lldb::pid_t pid, bool exited,
+void NativeProcessHaiku::MonitorCallback(lldb::pid_t pid, bool exited,
                                          WaitStatus status) {
   Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS));
 
@@ -446,7 +446,7 @@ void NativeProcessLinux::MonitorCallback(lldb::pid_t pid, bool exited,
     LLDB_LOG(log, "tid {0}, si_code: {1}, si_pid: {2}", pid, info.si_code,
              info.si_pid);
 
-    NativeThreadLinux &thread = AddThread(pid);
+    NativeThreadHaiku &thread = AddThread(pid);
 
     // Resume the newly created thread.
     ResumeThread(thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
@@ -514,7 +514,7 @@ void NativeProcessLinux::MonitorCallback(lldb::pid_t pid, bool exited,
   }
 }
 
-void NativeProcessLinux::WaitForNewThread(::pid_t tid) {
+void NativeProcessHaiku::WaitForNewThread(::pid_t tid) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
 
   if (GetThreadByID(tid)) {
@@ -552,14 +552,14 @@ void NativeProcessLinux::WaitForNewThread(::pid_t tid) {
   }
 
   LLDB_LOG(log, "pid = {0}: tracking new thread tid {1}", GetID(), tid);
-  NativeThreadLinux &new_thread = AddThread(tid);
+  NativeThreadHaiku &new_thread = AddThread(tid);
 
   ResumeThread(new_thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
   ThreadWasCreated(new_thread);
 }
 
-void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
-                                        NativeThreadLinux &thread) {
+void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
+                                        NativeThreadHaiku &thread) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   const bool is_main_thread = (thread.GetID() == GetID());
 
@@ -595,7 +595,7 @@ void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
     // Exec clears any pending notifications.
     m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
 
-    // Remove all but the main thread here.  Linux fork creates a new process
+    // Remove all but the main thread here.  Haiku fork creates a new process
     // which only copies the main thread.
     LLDB_LOG(log, "exec received, stop tracking all but main thread");
 
@@ -603,7 +603,7 @@ void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
       return t->GetID() != GetID();
     });
     assert(m_threads.size() == 1);
-    auto *main_thread = static_cast<NativeThreadLinux *>(m_threads[0].get());
+    auto *main_thread = static_cast<NativeThreadHaiku *>(m_threads[0].get());
 
     SetCurrentThreadID(main_thread->GetID());
     main_thread->SetStoppedByExec();
@@ -731,7 +731,7 @@ void NativeProcessLinux::MonitorSIGTRAP(const siginfo_t &info,
   }
 }
 
-void NativeProcessLinux::MonitorTrace(NativeThreadLinux &thread) {
+void NativeProcessHaiku::MonitorTrace(NativeThreadHaiku &thread) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   LLDB_LOG(log, "received trace event, pid = {0}", thread.GetID());
 
@@ -741,7 +741,7 @@ void NativeProcessLinux::MonitorTrace(NativeThreadLinux &thread) {
   StopRunningThreads(thread.GetID());
 }
 
-void NativeProcessLinux::MonitorBreakpoint(NativeThreadLinux &thread) {
+void NativeProcessHaiku::MonitorBreakpoint(NativeThreadHaiku &thread) {
   Log *log(
       GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_BREAKPOINTS));
   LLDB_LOG(log, "received breakpoint event, pid = {0}", thread.GetID());
@@ -757,7 +757,7 @@ void NativeProcessLinux::MonitorBreakpoint(NativeThreadLinux &thread) {
   StopRunningThreads(thread.GetID());
 }
 
-void NativeProcessLinux::MonitorWatchpoint(NativeThreadLinux &thread,
+void NativeProcessHaiku::MonitorWatchpoint(NativeThreadHaiku &thread,
                                            uint32_t wp_index) {
   Log *log(
       GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS | LIBLLDB_LOG_WATCHPOINTS));
@@ -773,8 +773,8 @@ void NativeProcessLinux::MonitorWatchpoint(NativeThreadLinux &thread,
   StopRunningThreads(thread.GetID());
 }
 
-void NativeProcessLinux::MonitorSignal(const siginfo_t &info,
-                                       NativeThreadLinux &thread, bool exited) {
+void NativeProcessHaiku::MonitorSignal(const siginfo_t &info,
+                                       NativeThreadHaiku &thread, bool exited) {
   const int signo = info.si_signo;
   const bool is_from_llgs = info.si_pid == getpid();
 
@@ -782,7 +782,7 @@ void NativeProcessLinux::MonitorSignal(const siginfo_t &info,
 
   // POSIX says that process behaviour is undefined after it ignores a SIGFPE,
   // SIGILL, SIGSEGV, or SIGBUS *unless* that signal was generated by a kill(2)
-  // or raise(3).  Similarly for tgkill(2) on Linux.
+  // or raise(3).  Similarly for tgkill(2) on Haiku.
   //
   // IOW, user generated signals never generate what we consider to be a
   // "crash".
@@ -863,13 +863,13 @@ void NativeProcessLinux::MonitorSignal(const siginfo_t &info,
 namespace {
 
 struct EmulatorBaton {
-  NativeProcessLinux &m_process;
+  NativeProcessHaiku &m_process;
   NativeRegisterContext &m_reg_context;
 
   // eRegisterKindDWARF -> RegsiterValue
   std::unordered_map<uint32_t, RegisterValue> m_register_values;
 
-  EmulatorBaton(NativeProcessLinux &process, NativeRegisterContext &reg_context)
+  EmulatorBaton(NativeProcessHaiku &process, NativeRegisterContext &reg_context)
       : m_process(process), m_reg_context(reg_context) {}
 };
 
@@ -937,7 +937,7 @@ static lldb::addr_t ReadFlags(NativeRegisterContext &regsiter_context) {
 }
 
 Status
-NativeProcessLinux::SetupSoftwareSingleStepping(NativeThreadLinux &thread) {
+NativeProcessHaiku::SetupSoftwareSingleStepping(NativeThreadHaiku &thread) {
   Status error;
   NativeRegisterContext& register_context = thread.GetRegisterContext();
 
@@ -1023,13 +1023,13 @@ NativeProcessLinux::SetupSoftwareSingleStepping(NativeThreadLinux &thread) {
   return Status();
 }
 
-bool NativeProcessLinux::SupportHardwareSingleStepping() const {
+bool NativeProcessHaiku::SupportHardwareSingleStepping() const {
   if (m_arch.GetMachine() == llvm::Triple::arm || m_arch.IsMIPS())
     return false;
   return true;
 }
 
-Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
+Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   LLDB_LOG(log, "pid {0}", GetID());
 
@@ -1046,7 +1046,7 @@ Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
 
       if (action->state == eStateStepping) {
         Status error = SetupSoftwareSingleStepping(
-            static_cast<NativeThreadLinux &>(*thread));
+            static_cast<NativeThreadHaiku &>(*thread));
         if (error.Fail())
           return error;
       }
@@ -1073,7 +1073,7 @@ Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
     case eStateStepping: {
       // Run the thread, possibly feeding it the signal.
       const int signo = action->signal;
-      ResumeThread(static_cast<NativeThreadLinux &>(*thread), action->state,
+      ResumeThread(static_cast<NativeThreadHaiku &>(*thread), action->state,
                    signo);
       break;
     }
@@ -1083,7 +1083,7 @@ Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
       llvm_unreachable("Unexpected state");
 
     default:
-      return Status("NativeProcessLinux::%s (): unexpected state %s specified "
+      return Status("NativeProcessHaiku::%s (): unexpected state %s specified "
                     "for pid %" PRIu64 ", tid %" PRIu64,
                     __FUNCTION__, StateAsCString(action->state), GetID(),
                     thread->GetID());
@@ -1093,7 +1093,7 @@ Status NativeProcessLinux::Resume(const ResumeActionList &resume_actions) {
   return Status();
 }
 
-Status NativeProcessLinux::Halt() {
+Status NativeProcessHaiku::Halt() {
   Status error;
 
   if (kill(GetID(), SIGSTOP) != 0)
@@ -1102,7 +1102,7 @@ Status NativeProcessLinux::Halt() {
   return error;
 }
 
-Status NativeProcessLinux::Detach() {
+Status NativeProcessHaiku::Detach() {
   Status error;
 
   // Stop monitoring the inferior.
@@ -1125,7 +1125,7 @@ Status NativeProcessLinux::Detach() {
   return error;
 }
 
-Status NativeProcessLinux::Signal(int signo) {
+Status NativeProcessHaiku::Signal(int signo) {
   Status error;
 
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -1138,7 +1138,7 @@ Status NativeProcessLinux::Signal(int signo) {
   return error;
 }
 
-Status NativeProcessLinux::Interrupt() {
+Status NativeProcessHaiku::Interrupt() {
   // Pick a running thread (or if none, a not-dead stopped thread) as the
   // chosen thread that will be the stop-reason thread.
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
@@ -1181,7 +1181,7 @@ Status NativeProcessLinux::Interrupt() {
   return Status();
 }
 
-Status NativeProcessLinux::Kill() {
+Status NativeProcessHaiku::Kill() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   LLDB_LOG(log, "pid {0}", GetID());
 
@@ -1217,7 +1217,7 @@ Status NativeProcessLinux::Kill() {
   return error;
 }
 
-Status NativeProcessLinux::GetMemoryRegionInfo(lldb::addr_t load_addr,
+Status NativeProcessHaiku::GetMemoryRegionInfo(lldb::addr_t load_addr,
                                                MemoryRegionInfo &range_info) {
   // FIXME review that the final memory region returned extends to the end of
   // the virtual address space,
@@ -1286,7 +1286,7 @@ Status NativeProcessLinux::GetMemoryRegionInfo(lldb::addr_t load_addr,
   return error;
 }
 
-Status NativeProcessLinux::PopulateMemoryRegionCache() {
+Status NativeProcessHaiku::PopulateMemoryRegionCache() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
 
   // If our cache is empty, pull the latest.  There should always be at least
@@ -1298,7 +1298,7 @@ Status NativeProcessLinux::PopulateMemoryRegionCache() {
   }
 
   Status Result;
-  LinuxMapCallback callback = [&](llvm::Expected<MemoryRegionInfo> Info) {
+  HaikuMapCallback callback = [&](llvm::Expected<MemoryRegionInfo> Info) {
     if (Info) {
       FileSpec file_spec(Info->GetName().GetCString());
       FileSystem::Instance().Resolve(file_spec);
@@ -1312,11 +1312,11 @@ Status NativeProcessLinux::PopulateMemoryRegionCache() {
     return false;
   };
 
-  // Linux kernel since 2.6.14 has /proc/{pid}/smaps
+  // Haiku kernel since 2.6.14 has /proc/{pid}/smaps
   // if CONFIG_PROC_PAGE_MONITOR is enabled
   auto BufferOrError = getProcFile(GetID(), "smaps");
   if (BufferOrError)
-    ParseLinuxSMapRegions(BufferOrError.get()->getBuffer(), callback);
+    ParseHaikuSMapRegions(BufferOrError.get()->getBuffer(), callback);
   else {
     BufferOrError = getProcFile(GetID(), "maps");
     if (!BufferOrError) {
@@ -1324,7 +1324,7 @@ Status NativeProcessLinux::PopulateMemoryRegionCache() {
       return BufferOrError.getError();
     }
 
-    ParseLinuxMapRegions(BufferOrError.get()->getBuffer(), callback);
+    ParseHaikuMapRegions(BufferOrError.get()->getBuffer(), callback);
   }
 
   if (Result.Fail())
@@ -1349,7 +1349,7 @@ Status NativeProcessLinux::PopulateMemoryRegionCache() {
   return Status();
 }
 
-void NativeProcessLinux::DoStopIDBumped(uint32_t newBumpId) {
+void NativeProcessHaiku::DoStopIDBumped(uint32_t newBumpId) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   LLDB_LOG(log, "newBumpId={0}", newBumpId);
   LLDB_LOG(log, "clearing {0} entries from memory region cache",
@@ -1358,7 +1358,7 @@ void NativeProcessLinux::DoStopIDBumped(uint32_t newBumpId) {
 }
 
 llvm::Expected<uint64_t>
-NativeProcessLinux::Syscall(llvm::ArrayRef<uint64_t> args) {
+NativeProcessHaiku::Syscall(llvm::ArrayRef<uint64_t> args) {
   PopulateMemoryRegionCache();
   auto region_it = llvm::find_if(m_mem_region_cache, [](const auto &pair) {
     return pair.first.GetExecutable() == MemoryRegionInfo::eYes;
@@ -1369,11 +1369,11 @@ NativeProcessLinux::Syscall(llvm::ArrayRef<uint64_t> args) {
 
   addr_t exe_addr = region_it->first.GetRange().GetRangeBase();
 
-  NativeThreadLinux &thread = *GetThreadByID(GetID());
+  NativeThreadHaiku &thread = *GetThreadByID(GetID());
   assert(thread.GetState() == eStateStopped);
-  NativeRegisterContextLinux &reg_ctx = thread.GetRegisterContext();
+  NativeRegisterContextHaiku &reg_ctx = thread.GetRegisterContext();
 
-  NativeRegisterContextLinux::SyscallData syscall_data =
+  NativeRegisterContextHaiku::SyscallData syscall_data =
       *reg_ctx.GetSyscallData();
 
   DataBufferSP registers_sp;
@@ -1441,9 +1441,9 @@ NativeProcessLinux::Syscall(llvm::ArrayRef<uint64_t> args) {
 }
 
 llvm::Expected<addr_t>
-NativeProcessLinux::AllocateMemory(size_t size, uint32_t permissions) {
+NativeProcessHaiku::AllocateMemory(size_t size, uint32_t permissions) {
 
-  llvm::Optional<NativeRegisterContextLinux::MmapData> mmap_data =
+  llvm::Optional<NativeRegisterContextHaiku::MmapData> mmap_data =
       GetCurrentThread()->GetRegisterContext().GetMmapData();
   if (!mmap_data)
     return llvm::make_error<UnimplementedError>();
@@ -1467,8 +1467,8 @@ NativeProcessLinux::AllocateMemory(size_t size, uint32_t permissions) {
   return Result;
 }
 
-llvm::Error NativeProcessLinux::DeallocateMemory(lldb::addr_t addr) {
-  llvm::Optional<NativeRegisterContextLinux::MmapData> mmap_data =
+llvm::Error NativeProcessHaiku::DeallocateMemory(lldb::addr_t addr) {
+  llvm::Optional<NativeRegisterContextHaiku::MmapData> mmap_data =
       GetCurrentThread()->GetRegisterContext().GetMmapData();
   if (!mmap_data)
     return llvm::make_error<UnimplementedError>();
@@ -1487,14 +1487,14 @@ llvm::Error NativeProcessLinux::DeallocateMemory(lldb::addr_t addr) {
   return llvm::Error::success();
 }
 
-size_t NativeProcessLinux::UpdateThreads() {
-  // The NativeProcessLinux monitoring threads are always up to date with
+size_t NativeProcessHaiku::UpdateThreads() {
+  // The NativeProcessHaiku monitoring threads are always up to date with
   // respect to thread state and they keep the thread list populated properly.
   // All this method needs to do is return the thread count.
   return m_threads.size();
 }
 
-Status NativeProcessLinux::SetBreakpoint(lldb::addr_t addr, uint32_t size,
+Status NativeProcessHaiku::SetBreakpoint(lldb::addr_t addr, uint32_t size,
                                          bool hardware) {
   if (hardware)
     return SetHardwareBreakpoint(addr, size);
@@ -1502,7 +1502,7 @@ Status NativeProcessLinux::SetBreakpoint(lldb::addr_t addr, uint32_t size,
     return SetSoftwareBreakpoint(addr, size);
 }
 
-Status NativeProcessLinux::RemoveBreakpoint(lldb::addr_t addr, bool hardware) {
+Status NativeProcessHaiku::RemoveBreakpoint(lldb::addr_t addr, bool hardware) {
   if (hardware)
     return RemoveHardwareBreakpoint(addr);
   else
@@ -1510,9 +1510,9 @@ Status NativeProcessLinux::RemoveBreakpoint(lldb::addr_t addr, bool hardware) {
 }
 
 llvm::Expected<llvm::ArrayRef<uint8_t>>
-NativeProcessLinux::GetSoftwareBreakpointTrapOpcode(size_t size_hint) {
+NativeProcessHaiku::GetSoftwareBreakpointTrapOpcode(size_t size_hint) {
   // The ARM reference recommends the use of 0xe7fddefe and 0xdefe but the
-  // linux kernel does otherwise.
+  // haiku kernel does otherwise.
   static const uint8_t g_arm_opcode[] = {0xf0, 0x01, 0xf0, 0xe7};
   static const uint8_t g_thumb_opcode[] = {0x01, 0xde};
 
@@ -1532,7 +1532,7 @@ NativeProcessLinux::GetSoftwareBreakpointTrapOpcode(size_t size_hint) {
   }
 }
 
-Status NativeProcessLinux::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
+Status NativeProcessHaiku::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
                                       size_t &bytes_read) {
   if (ProcessVmReadvSupported()) {
     // The process_vm_readv path is about 50 times faster than ptrace api. We
@@ -1569,7 +1569,7 @@ Status NativeProcessLinux::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
   LLDB_LOG(log, "addr = {0}, buf = {1}, size = {2}", addr, buf, size);
 
   for (bytes_read = 0; bytes_read < size; bytes_read += remainder) {
-    Status error = NativeProcessLinux::PtraceWrapper(
+    Status error = NativeProcessHaiku::PtraceWrapper(
         PTRACE_PEEKDATA, GetID(), (void *)addr, nullptr, 0, &data);
     if (error.Fail())
       return error;
@@ -1587,7 +1587,7 @@ Status NativeProcessLinux::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
   return Status();
 }
 
-Status NativeProcessLinux::WriteMemory(lldb::addr_t addr, const void *buf,
+Status NativeProcessHaiku::WriteMemory(lldb::addr_t addr, const void *buf,
                                        size_t size, size_t &bytes_written) {
   const unsigned char *src = static_cast<const unsigned char *>(buf);
   size_t remainder;
@@ -1605,7 +1605,7 @@ Status NativeProcessLinux::WriteMemory(lldb::addr_t addr, const void *buf,
       memcpy(&data, src, k_ptrace_word_size);
 
       LLDB_LOG(log, "[{0:x}]:{1:x}", addr, data);
-      error = NativeProcessLinux::PtraceWrapper(PTRACE_POKEDATA, GetID(),
+      error = NativeProcessHaiku::PtraceWrapper(PTRACE_POKEDATA, GetID(),
                                                 (void *)addr, (void *)data);
       if (error.Fail())
         return error;
@@ -1633,23 +1633,23 @@ Status NativeProcessLinux::WriteMemory(lldb::addr_t addr, const void *buf,
   return error;
 }
 
-Status NativeProcessLinux::GetSignalInfo(lldb::tid_t tid, void *siginfo) {
+Status NativeProcessHaiku::GetSignalInfo(lldb::tid_t tid, void *siginfo) {
   return PtraceWrapper(PTRACE_GETSIGINFO, tid, nullptr, siginfo);
 }
 
-Status NativeProcessLinux::GetEventMessage(lldb::tid_t tid,
+Status NativeProcessHaiku::GetEventMessage(lldb::tid_t tid,
                                            unsigned long *message) {
   return PtraceWrapper(PTRACE_GETEVENTMSG, tid, nullptr, message);
 }
 
-Status NativeProcessLinux::Detach(lldb::tid_t tid) {
+Status NativeProcessHaiku::Detach(lldb::tid_t tid) {
   if (tid == LLDB_INVALID_THREAD_ID)
     return Status();
 
   return PtraceWrapper(PTRACE_DETACH, tid);
 }
 
-bool NativeProcessLinux::HasThreadNoLock(lldb::tid_t thread_id) {
+bool NativeProcessHaiku::HasThreadNoLock(lldb::tid_t thread_id) {
   for (const auto &thread : m_threads) {
     assert(thread && "thread list should not contain NULL threads");
     if (thread->GetID() == thread_id) {
@@ -1662,7 +1662,7 @@ bool NativeProcessLinux::HasThreadNoLock(lldb::tid_t thread_id) {
   return false;
 }
 
-bool NativeProcessLinux::StopTrackingThread(lldb::tid_t thread_id) {
+bool NativeProcessHaiku::StopTrackingThread(lldb::tid_t thread_id) {
   Log *const log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
   LLDB_LOG(log, "tid: {0})", thread_id);
 
@@ -1681,7 +1681,7 @@ bool NativeProcessLinux::StopTrackingThread(lldb::tid_t thread_id) {
   return found;
 }
 
-NativeThreadLinux &NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
+NativeThreadHaiku &NativeProcessHaiku::AddThread(lldb::tid_t thread_id) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD));
   LLDB_LOG(log, "pid {0} adding thread with tid {1}", GetID(), thread_id);
 
@@ -1692,7 +1692,7 @@ NativeThreadLinux &NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
   if (m_threads.empty())
     SetCurrentThreadID(thread_id);
 
-  m_threads.push_back(std::make_unique<NativeThreadLinux>(*this, thread_id));
+  m_threads.push_back(std::make_unique<NativeThreadHaiku>(*this, thread_id));
 
   if (m_pt_proces_trace_id != LLDB_INVALID_UID) {
     auto traceMonitor = ProcessorTraceMonitor::Create(
@@ -1708,10 +1708,10 @@ NativeThreadLinux &NativeProcessLinux::AddThread(lldb::tid_t thread_id) {
     }
   }
 
-  return static_cast<NativeThreadLinux &>(*m_threads.back());
+  return static_cast<NativeThreadHaiku &>(*m_threads.back());
 }
 
-Status NativeProcessLinux::GetLoadedModuleFileSpec(const char *module_path,
+Status NativeProcessHaiku::GetLoadedModuleFileSpec(const char *module_path,
                                                    FileSpec &file_spec) {
   Status error = PopulateMemoryRegionCache();
   if (error.Fail())
@@ -1731,7 +1731,7 @@ Status NativeProcessLinux::GetLoadedModuleFileSpec(const char *module_path,
                 module_file_spec.GetFilename().AsCString(), GetID());
 }
 
-Status NativeProcessLinux::GetFileLoadAddress(const llvm::StringRef &file_name,
+Status NativeProcessHaiku::GetFileLoadAddress(const llvm::StringRef &file_name,
                                               lldb::addr_t &load_addr) {
   load_addr = LLDB_INVALID_ADDRESS;
   Status error = PopulateMemoryRegionCache();
@@ -1748,17 +1748,17 @@ Status NativeProcessLinux::GetFileLoadAddress(const llvm::StringRef &file_name,
   return Status("No load address found for specified file.");
 }
 
-NativeThreadLinux *NativeProcessLinux::GetThreadByID(lldb::tid_t tid) {
-  return static_cast<NativeThreadLinux *>(
+NativeThreadHaiku *NativeProcessHaiku::GetThreadByID(lldb::tid_t tid) {
+  return static_cast<NativeThreadHaiku *>(
       NativeProcessProtocol::GetThreadByID(tid));
 }
 
-NativeThreadLinux *NativeProcessLinux::GetCurrentThread() {
-  return static_cast<NativeThreadLinux *>(
+NativeThreadHaiku *NativeProcessHaiku::GetCurrentThread() {
+  return static_cast<NativeThreadHaiku *>(
       NativeProcessProtocol::GetCurrentThread());
 }
 
-Status NativeProcessLinux::ResumeThread(NativeThreadLinux &thread,
+Status NativeProcessHaiku::ResumeThread(NativeThreadHaiku &thread,
                                         lldb::StateType state, int signo) {
   Log *const log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
   LLDB_LOG(log, "tid: {0}", thread.GetID());
@@ -1799,7 +1799,7 @@ Status NativeProcessLinux::ResumeThread(NativeThreadLinux &thread,
 
 //===----------------------------------------------------------------------===//
 
-void NativeProcessLinux::StopRunningThreads(const lldb::tid_t triggering_tid) {
+void NativeProcessHaiku::StopRunningThreads(const lldb::tid_t triggering_tid) {
   Log *const log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
   LLDB_LOG(log, "about to process event: (triggering_tid: {0})",
            triggering_tid);
@@ -1810,14 +1810,14 @@ void NativeProcessLinux::StopRunningThreads(const lldb::tid_t triggering_tid) {
   // not already known to be stopped.
   for (const auto &thread : m_threads) {
     if (StateIsRunningState(thread->GetState()))
-      static_cast<NativeThreadLinux *>(thread.get())->RequestStop();
+      static_cast<NativeThreadHaiku *>(thread.get())->RequestStop();
   }
 
   SignalIfAllThreadsStopped();
   LLDB_LOG(log, "event processing done");
 }
 
-void NativeProcessLinux::SignalIfAllThreadsStopped() {
+void NativeProcessHaiku::SignalIfAllThreadsStopped() {
   if (m_pending_notification_tid == LLDB_INVALID_THREAD_ID)
     return; // No pending notification. Nothing to do.
 
@@ -1846,7 +1846,7 @@ void NativeProcessLinux::SignalIfAllThreadsStopped() {
   m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
 }
 
-void NativeProcessLinux::ThreadWasCreated(NativeThreadLinux &thread) {
+void NativeProcessHaiku::ThreadWasCreated(NativeThreadHaiku &thread) {
   Log *const log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
   LLDB_LOG(log, "tid: {0}", thread.GetID());
 
@@ -1858,7 +1858,7 @@ void NativeProcessLinux::ThreadWasCreated(NativeThreadLinux &thread) {
   }
 }
 
-void NativeProcessLinux::SigchldHandler() {
+void NativeProcessHaiku::SigchldHandler() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   // Process all pending waitpid notifications.
   while (true) {
@@ -1891,7 +1891,7 @@ void NativeProcessLinux::SigchldHandler() {
 
 // Wrapper for ptrace to catch errors and log calls. Note that ptrace sets
 // errno on error because -1 can be a valid result (i.e. for PTRACE_PEEK*)
-Status NativeProcessLinux::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
+Status NativeProcessHaiku::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
                                          void *data, size_t data_size,
                                          long *result) {
   Status error;
@@ -1927,7 +1927,7 @@ Status NativeProcessLinux::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
 }
 
 llvm::Expected<ProcessorTraceMonitor &>
-NativeProcessLinux::LookupProcessorTraceInstance(lldb::user_id_t traceid,
+NativeProcessHaiku::LookupProcessorTraceInstance(lldb::user_id_t traceid,
                                                  lldb::tid_t thread) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
   if (thread == LLDB_INVALID_THREAD_ID && traceid == m_pt_proces_trace_id) {
@@ -1945,7 +1945,7 @@ NativeProcessLinux::LookupProcessorTraceInstance(lldb::user_id_t traceid,
   return Status("tracing not active for this thread").ToError();
 }
 
-Status NativeProcessLinux::GetMetaData(lldb::user_id_t traceid,
+Status NativeProcessHaiku::GetMetaData(lldb::user_id_t traceid,
                                        lldb::tid_t thread,
                                        llvm::MutableArrayRef<uint8_t> &buffer,
                                        size_t offset) {
@@ -1965,7 +1965,7 @@ Status NativeProcessLinux::GetMetaData(lldb::user_id_t traceid,
   return (*perf_monitor).ReadPerfTraceData(buffer, offset);
 }
 
-Status NativeProcessLinux::GetData(lldb::user_id_t traceid, lldb::tid_t thread,
+Status NativeProcessHaiku::GetData(lldb::user_id_t traceid, lldb::tid_t thread,
                                    llvm::MutableArrayRef<uint8_t> &buffer,
                                    size_t offset) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
@@ -1983,7 +1983,7 @@ Status NativeProcessLinux::GetData(lldb::user_id_t traceid, lldb::tid_t thread,
   return (*perf_monitor).ReadPerfTraceAux(buffer, offset);
 }
 
-Status NativeProcessLinux::GetTraceConfig(lldb::user_id_t traceid,
+Status NativeProcessHaiku::GetTraceConfig(lldb::user_id_t traceid,
                                           TraceOptions &config) {
   Status error;
   if (config.getThreadID() == LLDB_INVALID_THREAD_ID &&
@@ -2005,14 +2005,14 @@ Status NativeProcessLinux::GetTraceConfig(lldb::user_id_t traceid,
   return error;
 }
 
-llvm::Expected<TraceTypeInfo> NativeProcessLinux::GetSupportedTraceType() {
+llvm::Expected<TraceTypeInfo> NativeProcessHaiku::GetSupportedTraceType() {
   if (ProcessorTraceMonitor::IsSupported())
     return TraceTypeInfo{"intel-pt", "Intel Processor Trace"};
   return NativeProcessProtocol::GetSupportedTraceType();
 }
 
 lldb::user_id_t
-NativeProcessLinux::StartTraceGroup(const TraceOptions &config,
+NativeProcessHaiku::StartTraceGroup(const TraceOptions &config,
                                            Status &error) {
 
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
@@ -2043,7 +2043,7 @@ NativeProcessLinux::StartTraceGroup(const TraceOptions &config,
   return m_pt_proces_trace_id;
 }
 
-lldb::user_id_t NativeProcessLinux::StartTrace(const TraceOptions &config,
+lldb::user_id_t NativeProcessHaiku::StartTrace(const TraceOptions &config,
                                                Status &error) {
   if (config.getType() != TraceType::eTraceTypeProcessorTrace)
     return NativeProcessProtocol::StartTrace(config, error);
@@ -2082,7 +2082,7 @@ lldb::user_id_t NativeProcessLinux::StartTrace(const TraceOptions &config,
   return ret_trace_id;
 }
 
-Status NativeProcessLinux::StopTracingForThread(lldb::tid_t thread) {
+Status NativeProcessHaiku::StopTracingForThread(lldb::tid_t thread) {
   Status error;
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
   LLDB_LOG(log, "Thread {0}", thread);
@@ -2104,13 +2104,13 @@ Status NativeProcessLinux::StopTracingForThread(lldb::tid_t thread) {
   return error;
 }
 
-Status NativeProcessLinux::StopTrace(lldb::user_id_t traceid,
+Status NativeProcessHaiku::StopTrace(lldb::user_id_t traceid,
                                      lldb::tid_t thread) {
   Status error;
 
   TraceOptions trace_options;
   trace_options.setThreadID(thread);
-  error = NativeProcessLinux::GetTraceConfig(traceid, trace_options);
+  error = NativeProcessHaiku::GetTraceConfig(traceid, trace_options);
 
   if (error.Fail())
     return error;
@@ -2131,14 +2131,14 @@ Status NativeProcessLinux::StopTrace(lldb::user_id_t traceid,
   return error;
 }
 
-void NativeProcessLinux::StopProcessorTracingOnProcess() {
+void NativeProcessHaiku::StopProcessorTracingOnProcess() {
   for (auto thread_id_iter : m_pt_traced_thread_group)
     m_processor_trace_monitor.erase(thread_id_iter);
   m_pt_traced_thread_group.clear();
   m_pt_proces_trace_id = LLDB_INVALID_UID;
 }
 
-Status NativeProcessLinux::StopProcessorTracingOnThread(lldb::user_id_t traceid,
+Status NativeProcessHaiku::StopProcessorTracingOnThread(lldb::user_id_t traceid,
                                                         lldb::tid_t thread) {
   Status error;
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
