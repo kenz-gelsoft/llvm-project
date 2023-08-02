@@ -71,11 +71,6 @@ public:
   Status WriteMemory(lldb::addr_t addr, const void *buf, size_t size,
                      size_t &bytes_written) override;
 
-  llvm::Expected<lldb::addr_t> AllocateMemory(size_t size,
-                                              uint32_t permissions) override;
-
-  llvm::Error DeallocateMemory(lldb::addr_t addr) override;
-
   size_t UpdateThreads() override;
 
   const ArchSpec &GetArchitecture() const override { return m_arch; }
@@ -106,12 +101,6 @@ public:
                               void *data = nullptr, size_t data_size = 0,
                               long *result = nullptr);
 
-protected:
-  llvm::Expected<llvm::ArrayRef<uint8_t>>
-  GetSoftwareBreakpointTrapOpcode(size_t size_hint) override;
-
-  llvm::Expected<uint64_t> Syscall(llvm::ArrayRef<uint64_t> args);
-
 private:
   MainLoop::SignalHandleUP m_sigchld_handle;
   ArchSpec m_arch;
@@ -124,9 +113,6 @@ private:
   // List of thread ids stepping with a breakpoint with the address of
   // the relevan breakpoint
   std::map<lldb::tid_t, lldb::addr_t> m_threads_stepping_with_breakpoint;
-
-  /// Inferior memory (allocated by us) and its size.
-  llvm::DenseMap<lldb::addr_t, lldb::addr_t> m_allocated_memory;
 
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
