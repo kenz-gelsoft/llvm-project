@@ -1808,44 +1808,6 @@ NativeProcessHaiku::LookupProcessorTraceInstance(lldb::user_id_t traceid,
   return Status("tracing not active for this thread").ToError();
 }
 
-Status NativeProcessHaiku::GetMetaData(lldb::user_id_t traceid,
-                                       lldb::tid_t thread,
-                                       llvm::MutableArrayRef<uint8_t> &buffer,
-                                       size_t offset) {
-  TraceOptions trace_options;
-  Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
-  Status error;
-
-  LLDB_LOG(log, "traceid {0}", traceid);
-
-  auto perf_monitor = LookupProcessorTraceInstance(traceid, thread);
-  if (!perf_monitor) {
-    LLDB_LOG(log, "traceid not being traced: {0}", traceid);
-    buffer = buffer.slice(buffer.size());
-    error = perf_monitor.takeError();
-    return error;
-  }
-  return (*perf_monitor).ReadPerfTraceData(buffer, offset);
-}
-
-Status NativeProcessHaiku::GetData(lldb::user_id_t traceid, lldb::tid_t thread,
-                                   llvm::MutableArrayRef<uint8_t> &buffer,
-                                   size_t offset) {
-  Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
-  Status error;
-
-  LLDB_LOG(log, "traceid {0}", traceid);
-
-  auto perf_monitor = LookupProcessorTraceInstance(traceid, thread);
-  if (!perf_monitor) {
-    LLDB_LOG(log, "traceid not being traced: {0}", traceid);
-    buffer = buffer.slice(buffer.size());
-    error = perf_monitor.takeError();
-    return error;
-  }
-  return (*perf_monitor).ReadPerfTraceAux(buffer, offset);
-}
-
 Status NativeProcessHaiku::GetTraceConfig(lldb::user_id_t traceid,
                                           TraceOptions &config) {
   Status error;

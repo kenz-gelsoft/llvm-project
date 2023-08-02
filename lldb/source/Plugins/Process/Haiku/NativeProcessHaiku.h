@@ -107,14 +107,6 @@ public:
   Status StopTrace(lldb::user_id_t traceid,
                    lldb::tid_t thread) override;
 
-  Status GetData(lldb::user_id_t traceid, lldb::tid_t thread,
-                 llvm::MutableArrayRef<uint8_t> &buffer,
-                 size_t offset = 0) override;
-
-  Status GetMetaData(lldb::user_id_t traceid, lldb::tid_t thread,
-                     llvm::MutableArrayRef<uint8_t> &buffer,
-                     size_t offset = 0) override;
-
   Status GetTraceConfig(lldb::user_id_t traceid, TraceOptions &config) override;
 
   virtual llvm::Expected<TraceTypeInfo> GetSupportedTraceType() override;
@@ -155,8 +147,6 @@ private:
 
   // Returns a list of process threads that we have attached to.
   static llvm::Expected<std::vector<::pid_t>> Attach(::pid_t pid);
-
-  static Status SetDefaultPtraceOpts(const lldb::pid_t);
 
   void MonitorCallback(lldb::pid_t pid, bool exited, WaitStatus status);
 
