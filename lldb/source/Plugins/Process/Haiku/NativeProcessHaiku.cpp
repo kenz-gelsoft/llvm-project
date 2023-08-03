@@ -232,11 +232,6 @@ NativeProcessHaiku::NativeProcessHaiku(::pid_t pid, int terminal_fd,
   assert(maybe_thread);
   m_port_thread = *maybe_thread;
 
-  Status status;
-  m_sigchld_handle = mainloop.RegisterSignal(
-      SIGCHLD, [this](MainLoopBase &) { SigchldHandler(); }, status);
-  assert(m_sigchld_handle && status.Success());
-
   int32 cookie = 0;
   thread_info info;
   while (get_next_thread_info(GetID(), &cookie, &info) == B_OK) {
@@ -248,9 +243,6 @@ NativeProcessHaiku::NativeProcessHaiku(::pid_t pid, int terminal_fd,
   // Let our process instance know the thread has stopped.
   SetCurrentThreadID(pid);
   SetState(StateType::eStateStopped, false);
-
-  // Proccess any signals we received before installing our handler
-  SigchldHandler();
 }
 
 llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
@@ -316,48 +308,6 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
 }
 
 // Handles all waitpid events from the inferior process.
-void NativeProcessHaiku::MonitorCallback(lldb::pid_t pid, bool exited,
-                                         WaitStatus status) {
-  Log *log(GetLogIfAnyCategoriesSet(LIBLLDB_LOG_PROCESS));
-
-  // Certain activities differ based on whether the pid is the tid of the main
-  // thread.
-  const bool is_main_thread = (pid == GetID());
-
-  // Handle when the thread exits.
-  if (exited) {
-    LLDB_LOG(log,
-             "got exit status({0}) , tid = {1} ({2} main thread), process "
-             "state = {3}",
-             status, pid, is_main_thread ? "is" : "is not", GetState());
-
-    // This is a thread that exited.  Ensure we're not tracking it anymore.
-    StopTrackingThread(pid);
-
-    if (is_main_thread) {
-      // The main thread exited.  We're done monitoring.  Report to delegate.
-      SetExitStatus(status, true);
-
-      // Notify delegate that our process has exited.
-      SetState(StateType::eStateExited, true);
-    }
-    return;
-  }
-
-  siginfo_t info;
-  const auto info_err = GetSignalInfo(pid, &info);
-  auto thread_sp = GetThreadByID(pid);
-
-  // Get details on the signal raised.
-  if (info_err.Success()) {
-    // We have retrieved the signal info.  Dispatch appropriately.
-    // if (info.si_signo == SIGTRAP)
-    //   MonitorSIGTRAP(info, *thread_sp);
-    // else
-      MonitorSignal(info, *thread_sp, exited);
-  }
-}
-
 void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   const bool is_main_thread = (thread.GetID() == GetID());
@@ -414,33 +364,21 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   }
 
   case B_DEBUGGER_MESSAGE_THREAD_DELETED: {
-    // The inferior process or one of its threads is about to exit. We don't
-    // want to do anything with the thread so we just resume it. In case we
-    // want to implement "break on thread exit" functionality, we would need to
-    // stop here.
-
-    unsigned long data = 0;
-    if (GetEventMessage(thread.GetID(), &data).Fail())
-      data = -1;
-
     LLDB_LOG(log,
-             "received PTRACE_EVENT_EXIT, data = {0:x}, WIFEXITED={1}, "
-             "WIFSIGNALED={2}, pid = {3}, main_thread = {4}",
-             data, WIFEXITED(data), WIFSIGNALED(data), thread.GetID(),
-             is_main_thread);
+             "got exit status({0}) , tid = {1} ({2} main thread), process "
+             "state = {3}",
+             status, pid, is_main_thread ? "is" : "is not", GetState());
 
+    // This is a thread that exited.  Ensure we're not tracking it anymore.
+    StopTrackingThread(pid);
 
-    StateType state = thread.GetState();
-    if (!StateIsRunningState(state)) {
-      // Due to a kernel bug, we may sometimes get this stop after the inferior
-      // gets a SIGKILL. This confuses our state tracking logic in
-      // ResumeThread(), since normally, we should not be receiving any ptrace
-      // events while the inferior is stopped. This makes sure that the
-      // inferior is resumed and exits normally.
-      state = eStateRunning;
+    if (is_main_thread) {
+      // The main thread exited.  We're done monitoring.  Report to delegate.
+      SetExitStatus(status, true);
+
+      // Notify delegate that our process has exited.
+      SetState(StateType::eStateExited, true);
     }
-    ResumeThread(thread, state, LLDB_INVALID_SIGNAL_NUMBER);
-
     break;
   }
 
@@ -670,9 +608,6 @@ Status NativeProcessHaiku::Halt() {
 
 Status NativeProcessHaiku::Detach() {
   Status error;
-
-  // Stop monitoring the inferior.
-  m_sigchld_handle.reset();
 
   // Tell ptrace to detach from the process.
   if (GetID() == LLDB_INVALID_PROCESS_ID)
@@ -1212,37 +1147,6 @@ void NativeProcessHaiku::ThreadWasCreated(NativeThreadHaiku &thread) {
     // We will need to wait for this new thread to stop as well before firing
     // the notification.
     thread.RequestStop();
-  }
-}
-
-void NativeProcessHaiku::SigchldHandler() {
-  Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
-  // Process all pending waitpid notifications.
-  while (true) {
-    int status = -1;
-    ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, ::waitpid, -1, &status,
-                                          __WALL | __WNOTHREAD | WNOHANG);
-
-    if (wait_pid == 0)
-      break; // We are done.
-
-    if (wait_pid == -1) {
-      Status error(errno, eErrorTypePOSIX);
-      LLDB_LOG(log, "waitpid (-1, &status, _) failed: {0}", error);
-      break;
-    }
-
-    WaitStatus wait_status = WaitStatus::Decode(status);
-    bool exited = wait_status.type == WaitStatus::Exit ||
-                  (wait_status.type == WaitStatus::Signal &&
-                   wait_pid == static_cast<::pid_t>(GetID()));
-
-    LLDB_LOG(
-        log,
-        "waitpid (-1, &status, _) => pid = {0}, status = {1}, exited = {2}",
-        wait_pid, wait_status, exited);
-
-    MonitorCallback(wait_pid, exited, wait_status);
   }
 }
 

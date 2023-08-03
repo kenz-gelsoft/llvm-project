@@ -108,7 +108,6 @@ public:
                               long *result = nullptr);
 
 private:
-  MainLoop::SignalHandleUP m_sigchld_handle;
   ArchSpec m_arch;
 
   LazyBool m_supports_mem_region = eLazyBoolCalculate;
@@ -126,8 +125,6 @@ private:
 
   // Returns a list of process threads that we have attached to.
   static llvm::Expected<std::vector<::pid_t>> Attach(::pid_t pid);
-
-  void MonitorCallback(lldb::pid_t pid, bool exited, WaitStatus status);
 
   void MonitorPort(lldb::pid_t pid, int i);
 
