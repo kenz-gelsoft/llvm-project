@@ -14,7 +14,6 @@
 
 #include "lldb/Host/Debug.h"
 #include "lldb/Host/HostThread.h"
-#include "lldb/Host/haiku/Support.h"
 #include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/FileSpec.h"
@@ -22,7 +21,6 @@
 
 #include "NativeThreadHaiku.h"
 #include "Plugins/Process/POSIX/NativeProcessELF.h"
-#include "ProcessorTrace.h"
 
 class BTeamDebugger;
 
@@ -98,9 +96,7 @@ public:
   NativeThreadHaiku *GetCurrentThread();
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
-  GetAuxvData() const override {
-    return getProcFile(GetID(), "auxv");
-  }
+  GetAuxvData() const override;
 
   // Interface used by NativeRegisterContext-derived classes.
   static Status PtraceWrapper(int req, lldb::pid_t pid, void *addr = nullptr,

@@ -21,9 +21,6 @@
 
 #include "NativeThreadHaiku.h"
 #include "Plugins/Process/POSIX/ProcessPOSIXLog.h"
-#include "Plugins/Process/Utility/HaikuProcMaps.h"
-#include "Procfs.h"
-// #include "lldb/Core/EmulateInstruction.h"
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostProcess.h"
@@ -31,8 +28,6 @@
 #include "lldb/Host/PseudoTerminal.h"
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/common/NativeRegisterContext.h"
-#include "lldb/Host/haiku/Ptrace.h"
-#include "lldb/Host/haiku/Uio.h"
 #include "lldb/Host/posix/ProcessLauncherPosixFork.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Target/Process.h"
@@ -49,9 +44,7 @@
 
 #include <TeamDebugger.h>
 #include <sys/socket.h>
-#include <sys/syscall.h>
 #include <sys/types.h>
-#include <sys/user.h>
 #include <sys/wait.h>
 
 using namespace lldb;
@@ -92,11 +85,14 @@ void MaybeLogLaunchInfo(const ProcessLaunchInfo &info) {
 
 void DisplayBytes(StreamString &s, void *bytes, uint32_t count) {
   uint8_t *ptr = (uint8_t *)bytes;
+  assert(false);
+#if 0
   const uint32_t loop_count = std::min<uint32_t>(DEBUG_PTRACE_MAXBYTES, count);
   for (uint32_t i = 0; i < loop_count; i++) {
     s.Printf("[%x]", *ptr);
     ptr++;
   }
+#endif
 }
 
 static constexpr unsigned k_ptrace_word_size = sizeof(void *);
@@ -261,6 +257,7 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
 
         // Attach to the requested process.
         // An attach will cause the thread to stop with a SIGSTOP.
+#if 0
         if ((status = PtraceWrapper(PTRACE_ATTACH, tid)).Fail()) {
           // No such thread. The thread may have exited. More error handling
           // may be needed.
@@ -285,6 +282,7 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
           return llvm::errorCodeToError(
               std::error_code(errno, std::generic_category()));
         }
+#endif
 
         LLDB_LOG(log, "adding tid = {0}", tid);
         it->second = true;
@@ -310,20 +308,23 @@ llvm::Expected<std::vector<::pid_t>> NativeProcessHaiku::Attach(::pid_t pid) {
 // Handles all waitpid events from the inferior process.
 void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
-  const bool is_main_thread = (thread.GetID() == GetID());
+
+  auto thread_sp = GetThreadByID(pid);
+  NativeThreadHaiku &thread = *thread_sp;
 
   int32 code;
   debug_debugger_message_data message;
 
   status_t error = team_debugger->ReadDebugMessage(code, message);
   assert(error == B_OK);
+  const bool is_main_thread = (message.origin.thread == GetID());
   switch (code) {
   // TODO: these two cases are required if we want to support tracing of the
   // inferiors' children.  We'd need this to debug a monitor. case (SIGTRAP |
   // (PTRACE_EVENT_FORK << 8)): case (SIGTRAP | (PTRACE_EVENT_VFORK << 8)):
 
   case B_DEBUGGER_MESSAGE_THREAD_CREATED: {
-    lldb::tid_t tid = message.debug_thread_created.new_thread;
+    lldb::tid_t tid = message.thread_created.new_thread;
     LLDB_LOG(log, "pid = {0}: tracking new thread tid {1}", GetID(), tid);
     NativeThreadHaiku &new_thread = AddThread(tid);
 
@@ -364,6 +365,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   }
 
   case B_DEBUGGER_MESSAGE_THREAD_DELETED: {
+  	WaitStatus status(WaitStatus::Exit, 0); // TODO: exit_code
     LLDB_LOG(log,
              "got exit status({0}) , tid = {1} ({2} main thread), process "
              "state = {3}",
@@ -409,7 +411,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
     break;
 
   case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED: {
-    siginfo_t info = message.debug_signal_received.info;
+    siginfo_t info = message.signal_received.info;
     LLDB_LOG(log, "received unknown SIGTRAP stop event ({0}, pid {1} tid {2}",
              info.si_code, GetID(), thread.GetID());
     MonitorSignal(info, thread, false);
@@ -490,6 +492,8 @@ void NativeProcessHaiku::MonitorSignal(const siginfo_t &info,
            thread.GetID());
 
   // Check for thread stop notification.
+  assert(false);
+#if 0
   if (is_from_llgs && (info.si_code == SI_TKILL) && (signo == SIGSTOP)) {
     // This is a tgkill()-based stop.
     LLDB_LOG(log, "pid {0} tid {1}, thread stopped", GetID(), thread.GetID());
@@ -537,6 +541,7 @@ void NativeProcessHaiku::MonitorSignal(const siginfo_t &info,
     // Done handling.
     return;
   }
+#endif
 
   // Check if debugger should stop at this signal or just ignore it and resume
   // the inferior.
@@ -889,10 +894,13 @@ Status NativeProcessHaiku::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
   LLDB_LOG(log, "addr = {0}, buf = {1}, size = {2}", addr, buf, size);
 
   for (bytes_read = 0; bytes_read < size; bytes_read += remainder) {
+    assert(false);
+#if 0
     Status error = NativeProcessHaiku::PtraceWrapper(
         PTRACE_PEEKDATA, GetID(), (void *)addr, nullptr, 0, &data);
     if (error.Fail())
       return error;
+#endif
 
     remainder = size - bytes_read;
     remainder = remainder > k_ptrace_word_size ? k_ptrace_word_size : remainder;
@@ -905,6 +913,11 @@ Status NativeProcessHaiku::ReadMemory(lldb::addr_t addr, void *buf, size_t size,
     dst += k_ptrace_word_size;
   }
   return Status();
+}
+
+llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
+NativeProcessHaiku::GetAuxvData() const {
+  return llvm::errc::not_supported;
 }
 
 Status NativeProcessHaiku::WriteMemory(lldb::addr_t addr, const void *buf,
@@ -925,10 +938,13 @@ Status NativeProcessHaiku::WriteMemory(lldb::addr_t addr, const void *buf,
       memcpy(&data, src, k_ptrace_word_size);
 
       LLDB_LOG(log, "[{0:x}]:{1:x}", addr, data);
+      assert(false);
+#if 0
       error = NativeProcessHaiku::PtraceWrapper(PTRACE_POKEDATA, GetID(),
                                                 (void *)addr, (void *)data);
       if (error.Fail())
         return error;
+#endif
     } else {
       unsigned char buff[8];
       size_t bytes_read;
@@ -954,19 +970,31 @@ Status NativeProcessHaiku::WriteMemory(lldb::addr_t addr, const void *buf,
 }
 
 Status NativeProcessHaiku::GetSignalInfo(lldb::tid_t tid, void *siginfo) {
+#if 0
   return PtraceWrapper(PTRACE_GETSIGINFO, tid, nullptr, siginfo);
+#endif
+  assert(false);
+  return Status();
 }
 
 Status NativeProcessHaiku::GetEventMessage(lldb::tid_t tid,
                                            unsigned long *message) {
+#if 0
   return PtraceWrapper(PTRACE_GETEVENTMSG, tid, nullptr, message);
+#endif
+  assert(false);
+  return Status();
 }
 
 Status NativeProcessHaiku::Detach(lldb::tid_t tid) {
   if (tid == LLDB_INVALID_THREAD_ID)
     return Status();
 
+#if 0
   return PtraceWrapper(PTRACE_DETACH, tid);
+#endif
+  assert(false);
+  return Status();
 }
 
 bool NativeProcessHaiku::HasThreadNoLock(lldb::tid_t thread_id) {
@@ -986,9 +1014,11 @@ bool NativeProcessHaiku::StopTrackingThread(lldb::tid_t thread_id) {
   Log *const log = ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD);
   LLDB_LOG(log, "tid: {0})", thread_id);
 
+  bool found = false;
   for (auto it = m_threads.begin(); it != m_threads.end(); ++it) {
     if (*it && ((*it)->GetID() == thread_id)) {
       m_threads.erase(it);
+      found = true;
       break;
     }
   }
@@ -1082,13 +1112,13 @@ Status NativeProcessHaiku::ResumeThread(NativeThreadHaiku &thread,
   // reflect it is running after this completes.
   switch (state) {
   case eStateRunning: {
-    const auto resume_result = thread.Resume(signo);
+    const auto resume_result = thread.Resume();
     if (resume_result.Success())
       SetState(eStateRunning, true);
     return resume_result;
   }
   case eStateStepping: {
-    const auto step_result = thread.SingleStep(signo);
+    const auto step_result = thread.SingleStep();
     if (step_result.Success())
       SetState(eStateRunning, true);
     return step_result;
@@ -1112,7 +1142,7 @@ void NativeProcessHaiku::StopRunningThreads(const lldb::tid_t triggering_tid) {
   // not already known to be stopped.
   for (const auto &thread : m_threads) {
     if (StateIsRunningState(thread->GetState()))
-      static_cast<NativeThreadHaiku *>(thread.get())->RequestStop();
+      static_cast<NativeThreadHaiku *>(thread.get())->Suspend();
   }
 
   SignalIfAllThreadsStopped();
@@ -1146,7 +1176,7 @@ void NativeProcessHaiku::ThreadWasCreated(NativeThreadHaiku &thread) {
       StateIsRunningState(thread.GetState())) {
     // We will need to wait for this new thread to stop as well before firing
     // the notification.
-    thread.RequestStop();
+    thread.Suspend();
   }
 }
 
@@ -1161,12 +1191,15 @@ Status NativeProcessHaiku::PtraceWrapper(int req, lldb::pid_t pid, void *addr,
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PTRACE));
 
   errno = 0;
+  assert(false);
+#if 0
   if (req == PTRACE_GETREGSET || req == PTRACE_SETREGSET)
     ret = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid),
                  *(unsigned int *)addr, data);
   else
     ret = ptrace(static_cast<__ptrace_request>(req), static_cast<::pid_t>(pid),
                  addr, data);
+#endif
 
   if (ret == -1)
     error.SetErrorToErrno();
