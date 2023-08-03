@@ -129,8 +129,6 @@ private:
 
   void MonitorCallback(lldb::pid_t pid, bool exited, WaitStatus status);
 
-  void WaitForNewThread(::pid_t tid);
-
   void MonitorPort(lldb::pid_t pid, int i);
 
   void MonitorTrace(NativeThreadHaiku &thread);

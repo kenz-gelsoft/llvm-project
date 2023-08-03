@@ -348,31 +348,6 @@ void NativeProcessHaiku::MonitorCallback(lldb::pid_t pid, bool exited,
   const auto info_err = GetSignalInfo(pid, &info);
   auto thread_sp = GetThreadByID(pid);
 
-  if (!thread_sp) {
-    // Normally, the only situation when we cannot find the thread is if we
-    // have just received a new thread notification. This is indicated by
-    // GetSignalInfo() returning si_code == SI_USER and si_pid == 0
-    LLDB_LOG(log, "received notification about an unknown tid {0}.", pid);
-
-    if (info_err.Fail()) {
-      LLDB_LOG(log,
-               "(tid {0}) GetSignalInfo failed ({1}). "
-               "Ingoring this notification.",
-               pid, info_err);
-      return;
-    }
-
-    LLDB_LOG(log, "tid {0}, si_code: {1}, si_pid: {2}", pid, info.si_code,
-             info.si_pid);
-
-    NativeThreadHaiku &thread = AddThread(pid);
-
-    // Resume the newly created thread.
-    ResumeThread(thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
-    ThreadWasCreated(thread);
-    return;
-  }
-
   // Get details on the signal raised.
   if (info_err.Success()) {
     // We have retrieved the signal info.  Dispatch appropriately.
@@ -380,73 +355,7 @@ void NativeProcessHaiku::MonitorCallback(lldb::pid_t pid, bool exited,
     //   MonitorSIGTRAP(info, *thread_sp);
     // else
       MonitorSignal(info, *thread_sp, exited);
-  } else {
-    if (info_err.GetError() == EINVAL) {
-      // This is a group stop reception for this tid. We can reach here if we
-      // reinject SIGSTOP, SIGSTP, SIGTTIN or SIGTTOU into the tracee,
-      // triggering the group-stop mechanism. Normally receiving these would
-      // stop the process, pending a SIGCONT. Simulating this state in a
-      // debugger is hard and is generally not needed (one use case is
-      // debugging background task being managed by a shell). For general use,
-      // it is sufficient to stop the process in a signal-delivery stop which
-      // happens before the group stop. This done by MonitorSignal and works
-      // correctly for all signals.
-      LLDB_LOG(log,
-               "received a group stop for pid {0} tid {1}. Transparent "
-               "handling of group stops not supported, resuming the "
-               "thread.",
-               GetID(), pid);
-      ResumeThread(*thread_sp, thread_sp->GetState(),
-                   LLDB_INVALID_SIGNAL_NUMBER);
-    } else {
-      // ptrace(GETSIGINFO) failed (but not due to group-stop).
-
-      // A return value of ESRCH means the thread/process is no longer on the
-      // system, so it was killed somehow outside of our control.  Either way,
-      // we can't do anything with it anymore.
-
-      // Stop tracking the metadata for the thread since it's entirely off the
-      // system now.
-      const bool thread_found = StopTrackingThread(pid);
-
-      LLDB_LOG(log,
-               "GetSignalInfo failed: {0}, tid = {1}, status = {2}, "
-               "status = {3}, main_thread = {4}, thread_found: {5}",
-               info_err, pid, status, status, is_main_thread, thread_found);
-
-      if (is_main_thread) {
-        // Notify the delegate - our process is not available but appears to
-        // have been killed outside our control.  Is eStateExited the right
-        // exit state in this case?
-        SetExitStatus(status, true);
-        SetState(StateType::eStateExited, true);
-      } else {
-        // This thread was pulled out from underneath us.  Anything to do here?
-        // Do we want to do an all stop?
-        LLDB_LOG(log,
-                 "pid {0} tid {1} non-main thread exit occurred, didn't "
-                 "tell delegate anything since thread disappeared out "
-                 "from underneath us",
-                 GetID(), pid);
-      }
-    }
   }
-}
-
-void NativeProcessHaiku::WaitForNewThread(::pid_t tid) {
-  Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
-
-  if (GetThreadByID(tid)) {
-    // We are already tracking the thread - we got the event on the new thread
-    // (see MonitorSignal) before this one. We are done.
-    return;
-  }
-
-  LLDB_LOG(log, "pid = {0}: tracking new thread tid {1}", GetID(), tid);
-  NativeThreadHaiku &new_thread = AddThread(tid);
-
-  ResumeThread(new_thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
-  ThreadWasCreated(new_thread);
 }
 
 void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
@@ -464,14 +373,12 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   // (PTRACE_EVENT_FORK << 8)): case (SIGTRAP | (PTRACE_EVENT_VFORK << 8)):
 
   case B_DEBUGGER_MESSAGE_THREAD_CREATED: {
-    // This is the notification on the parent thread which informs us of new
-    // thread creation. We don't want to do anything with the parent thread so
-    // we just resume it. In case we want to implement "break on thread
-    // creation" functionality, we would need to stop here.
+    lldb::tid_t tid = message.debug_thread_created.new_thread;
+    LLDB_LOG(log, "pid = {0}: tracking new thread tid {1}", GetID(), tid);
+    NativeThreadHaiku &new_thread = AddThread(tid);
 
-    WaitForNewThread(message.thread_created.new_thread);
-
-    ResumeThread(thread, thread.GetState(), LLDB_INVALID_SIGNAL_NUMBER);
+    ResumeThread(new_thread, eStateRunning, LLDB_INVALID_SIGNAL_NUMBER);
+    ThreadWasCreated(new_thread);
     break;
   }
 
