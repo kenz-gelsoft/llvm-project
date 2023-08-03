@@ -24,11 +24,17 @@
 #include "Plugins/Process/POSIX/NativeProcessELF.h"
 #include "ProcessorTrace.h"
 
+class BTeamDebugger;
+
 namespace lldb_private {
 class Status;
 class Scalar;
 
 namespace process_haiku {
+
+// FIXME: make per-team, threadsafe (if needed)
+extern std::shared_ptr<BTeamDebugger> team_debugger;
+
 /// \class NativeProcessHaiku
 /// Manages communication with the inferior (debugee) process.
 ///
@@ -110,10 +116,13 @@ private:
 
   lldb::tid_t m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
 
+  HostThread m_port_thread;
+
+  static void *PortReadThread(void *arg);
+
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
-                     const ArchSpec &arch, MainLoop &mainloop,
-                     llvm::ArrayRef<::pid_t> tids);
+                     const ArchSpec &arch, MainLoop &mainloop);
 
   // Returns a list of process threads that we have attached to.
   static llvm::Expected<std::vector<::pid_t>> Attach(::pid_t pid);
@@ -122,7 +131,7 @@ private:
 
   void WaitForNewThread(::pid_t tid);
 
-  void MonitorSIGTRAP(const siginfo_t &info, NativeThreadHaiku &thread);
+  void MonitorPort(lldb::pid_t pid, int i);
 
   void MonitorTrace(NativeThreadHaiku &thread);
 

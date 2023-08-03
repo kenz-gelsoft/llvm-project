@@ -47,7 +47,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Threading.h"
 
-#include <haiku/unistd.h>
+#include <TeamDebugger.h>
 #include <sys/socket.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
@@ -123,6 +123,20 @@ static Status EnsureFDFlags(int fd, int flags) {
   return error;
 }
 
+std::shared_ptr<BTeamDebugger> lldb_private::process_haiku::team_debugger;
+
+void *NativeProcessHaiku::PortReadThread(void *arg) {
+  auto self = reinterpret_cast<NativeProcessHaiku *>(arg);
+
+  lldb::pid_t pid = self->GetID();
+  int i = 0;
+  while (1) {
+    self->MonitorPort(pid, i);
+    ++i;
+  }
+  return nullptr;
+}
+
 // Public Static Methods
 
 llvm::Expected<std::unique_ptr<NativeProcessProtocol>>
@@ -144,16 +158,27 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
   }
 
   // Wait for the child process to trap on its call to execve.
-  // int wstatus;
-  // ::pid_t wpid = llvm::sys::RetryAfterSignal(-1, ::waitpid, pid, &wstatus, 0);
-  // assert(wpid == pid);
-  // (void)wpid;
-  // if (!WIFSTOPPED(wstatus)) {
-  //   LLDB_LOG(log, "Could not sync with inferior process: wstatus={1}",
-  //            WaitStatus::Decode(wstatus));
-  //   return llvm::make_error<StringError>("Could not sync with inferior process",
-  //                                        llvm::inconvertibleErrorCode());
-  // }
+  team_debugger = std::make_shared<BTeamDebugger>();
+  status_t error = team_debugger->Install(pid);
+  if (error != B_OK) {
+    LLDB_LOG(log, "Could not install team debugger: error={1}",
+             error);
+    return llvm::make_error<StringError>("Could not install team debugger",
+                                         llvm::inconvertibleErrorCode());
+  }
+  int32 flags =
+      B_TEAM_DEBUG_THREADS |
+//      B_TEAM_DEBUG_IMAGES |
+//      B_TEAM_DEBUG_POST_SYSCALL |
+      B_TEAM_DEBUG_SIGNALS |
+      B_TEAM_DEBUG_TEAM_CREATION;
+  error = team_debugger->SetTeamDebuggingFlags(flags);
+  if (error < 0) {
+    LLDB_LOG(log, "Cloud not set team debugging flags: error={1}",
+             error);
+    return llvm::make_error<StringError>("Cloud not set team debugging flags",
+                                         llvm::inconvertibleErrorCode());
+  }
   LLDB_LOG(log, "inferior started, now in stopped state");
 
   ProcessInstanceInfo Info;
@@ -168,7 +193,7 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
 
   return std::unique_ptr<NativeProcessHaiku>(new NativeProcessHaiku(
       pid, launch_info.GetPTY().ReleasePrimaryFileDescriptor(), native_delegate,
-      Info.GetArchitecture(), mainloop, {pid}));
+      Info.GetArchitecture(), mainloop));
 }
 
 llvm::Expected<std::unique_ptr<NativeProcessProtocol>>
@@ -186,38 +211,42 @@ NativeProcessHaiku::Factory::Attach(
   }
 
   auto tids_or = NativeProcessHaiku::Attach(pid);
-  if (!tids_or)
-    return tids_or.takeError();
 
   return std::unique_ptr<NativeProcessHaiku>(new NativeProcessHaiku(
-      pid, -1, native_delegate, Info.GetArchitecture(), mainloop, *tids_or));
+      pid, -1, native_delegate, Info.GetArchitecture(), mainloop));
 }
 
 // Public Instance Methods
 
 NativeProcessHaiku::NativeProcessHaiku(::pid_t pid, int terminal_fd,
                                        NativeDelegate &delegate,
-                                       const ArchSpec &arch, MainLoop &mainloop,
-                                       llvm::ArrayRef<::pid_t> tids)
+                                       const ArchSpec &arch, MainLoop &mainloop)
     : NativeProcessELF(pid, terminal_fd, delegate), m_arch(arch) {
   if (m_terminal_fd != -1) {
     Status status = EnsureFDFlags(m_terminal_fd, O_NONBLOCK);
     assert(status.Success());
   }
 
+  auto maybe_thread = ThreadLauncher::LaunchThread(
+      "HaikuPortReader", NativeProcessHaiku::PortReadThread, this);
+  assert(maybe_thread);
+  m_port_thread = *maybe_thread;
+
   Status status;
   m_sigchld_handle = mainloop.RegisterSignal(
       SIGCHLD, [this](MainLoopBase &) { SigchldHandler(); }, status);
   assert(m_sigchld_handle && status.Success());
 
-  for (const auto &tid : tids) {
-    NativeThreadHaiku &thread = AddThread(tid);
+  int32 cookie = 0;
+  thread_info info;
+  while (get_next_thread_info(GetID(), &cookie, &info) == B_OK) {
+    NativeThreadHaiku &thread = AddThread(info.thread);
     thread.SetStoppedBySignal(SIGSTOP);
     ThreadWasCreated(thread);
   }
 
   // Let our process instance know the thread has stopped.
-  SetCurrentThreadID(tids[0]);
+  SetCurrentThreadID(pid);
   SetState(StateType::eStateStopped, false);
 
   // Proccess any signals we received before installing our handler
@@ -347,9 +376,9 @@ void NativeProcessHaiku::MonitorCallback(lldb::pid_t pid, bool exited,
   // Get details on the signal raised.
   if (info_err.Success()) {
     // We have retrieved the signal info.  Dispatch appropriately.
-    if (info.si_signo == SIGTRAP)
-      MonitorSIGTRAP(info, *thread_sp);
-    else
+    // if (info.si_signo == SIGTRAP)
+    //   MonitorSIGTRAP(info, *thread_sp);
+    // else
       MonitorSignal(info, *thread_sp, exited);
   } else {
     if (info_err.GetError() == EINVAL) {
@@ -413,34 +442,6 @@ void NativeProcessHaiku::WaitForNewThread(::pid_t tid) {
     return;
   }
 
-  // The thread is not tracked yet, let's wait for it to appear.
-  int status = -1;
-  LLDB_LOG(log,
-           "received thread creation event for tid {0}. tid not tracked "
-           "yet, waiting for thread to appear...",
-           tid);
-  ::pid_t wait_pid = llvm::sys::RetryAfterSignal(-1, ::waitpid, tid, &status, __WALL);
-  // Since we are waiting on a specific tid, this must be the creation event.
-  // But let's do some checks just in case.
-  if (wait_pid != tid) {
-    LLDB_LOG(log,
-             "waiting for tid {0} failed. Assuming the thread has "
-             "disappeared in the meantime",
-             tid);
-    // The only way I know of this could happen is if the whole process was
-    // SIGKILLed in the mean time. In any case, we can't do anything about that
-    // now.
-    return;
-  }
-  if (WIFEXITED(status)) {
-    LLDB_LOG(log,
-             "waiting for tid {0} returned an 'exited' event. Not "
-             "tracking the thread.",
-             tid);
-    // Also a very improbable event.
-    return;
-  }
-
   LLDB_LOG(log, "pid = {0}: tracking new thread tid {1}", GetID(), tid);
   NativeThreadHaiku &new_thread = AddThread(tid);
 
@@ -448,39 +449,34 @@ void NativeProcessHaiku::WaitForNewThread(::pid_t tid) {
   ThreadWasCreated(new_thread);
 }
 
-void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
-                                        NativeThreadHaiku &thread) {
+void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_PROCESS));
   const bool is_main_thread = (thread.GetID() == GetID());
 
-  assert(info.si_signo == SIGTRAP && "Unexpected child signal!");
+  int32 code;
+  debug_debugger_message_data message;
 
-  switch (info.si_code) {
+  status_t error = team_debugger->ReadDebugMessage(code, message);
+  assert(error == B_OK);
+  switch (code) {
   // TODO: these two cases are required if we want to support tracing of the
   // inferiors' children.  We'd need this to debug a monitor. case (SIGTRAP |
   // (PTRACE_EVENT_FORK << 8)): case (SIGTRAP | (PTRACE_EVENT_VFORK << 8)):
 
-  case (SIGTRAP | (PTRACE_EVENT_CLONE << 8)): {
+  case B_DEBUGGER_MESSAGE_THREAD_CREATED: {
     // This is the notification on the parent thread which informs us of new
     // thread creation. We don't want to do anything with the parent thread so
     // we just resume it. In case we want to implement "break on thread
     // creation" functionality, we would need to stop here.
 
-    unsigned long event_message = 0;
-    if (GetEventMessage(thread.GetID(), &event_message).Fail()) {
-      LLDB_LOG(log,
-               "pid {0} received thread creation event but "
-               "GetEventMessage failed so we don't know the new tid",
-               thread.GetID());
-    } else
-      WaitForNewThread(event_message);
+    WaitForNewThread(message.thread_created.new_thread);
 
     ResumeThread(thread, thread.GetState(), LLDB_INVALID_SIGNAL_NUMBER);
     break;
   }
 
-  case (SIGTRAP | (PTRACE_EVENT_EXEC << 8)): {
-    LLDB_LOG(log, "received exec event, code = {0}", info.si_code ^ SIGTRAP);
+  case B_DEBUGGER_MESSAGE_TEAM_EXEC: {
+    LLDB_LOG(log, "received exec event, code = {0}", code);
 
     // Exec clears any pending notifications.
     m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
@@ -510,7 +506,7 @@ void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
     break;
   }
 
-  case (SIGTRAP | (PTRACE_EVENT_EXIT << 8)): {
+  case B_DEBUGGER_MESSAGE_THREAD_DELETED: {
     // The inferior process or one of its threads is about to exit. We don't
     // want to do anything with the thread so we just resume it. In case we
     // want to implement "break on thread exit" functionality, we would need to
@@ -541,14 +537,13 @@ void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
     break;
   }
 
-  case 0:
-  case TRAP_TRACE:  // We receive this on single stepping.
+  case B_DEBUGGER_MESSAGE_SINGLE_STEP:  // We receive this on single stepping.
   // case TRAP_HWBKPT: // We receive this on watchpoint hit
   {
     // If a watchpoint was hit, report it
     uint32_t wp_index;
     Status error = thread.GetRegisterContext().GetWatchpointHitIndex(
-        wp_index, (uintptr_t)info.si_addr);
+        wp_index, LLDB_INVALID_ADDRESS);
     if (error.Fail())
       LLDB_LOG(log,
                "received error while checking for watchpoint hits, pid = "
@@ -564,25 +559,26 @@ void NativeProcessHaiku::MonitorSIGTRAP(const siginfo_t &info,
     break;
   }
 
-  case TRAP_BRKPT:
+  case B_DEBUGGER_MESSAGE_BREAKPOINT_HIT:
     MonitorBreakpoint(thread);
     break;
 
-  case SIGTRAP:
-  case (SIGTRAP | 0x80):
-    LLDB_LOG(
-        log,
-        "received unknown SIGTRAP stop event ({0}, pid {1} tid {2}, resuming",
-        info.si_code, GetID(), thread.GetID());
-
-    // Ignore these signals until we know more about them.
-    ResumeThread(thread, thread.GetState(), LLDB_INVALID_SIGNAL_NUMBER);
-    break;
-
-  default:
+  case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED: {
+    siginfo_t info = message.debug_signal_received.info;
     LLDB_LOG(log, "received unknown SIGTRAP stop event ({0}, pid {1} tid {2}",
              info.si_code, GetID(), thread.GetID());
     MonitorSignal(info, thread, false);
+    break;
+  }
+
+  default:
+    LLDB_LOG(
+        log,
+        "received unknown SIGTRAP stop event ({0}, pid {1} tid {2}, resuming",
+        code, GetID(), thread.GetID());
+
+    // Ignore these signals until we know more about them.
+    ResumeThread(thread, thread.GetState(), LLDB_INVALID_SIGNAL_NUMBER);
     break;
   }
 }
