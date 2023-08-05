@@ -69,9 +69,10 @@ Status NativeThreadHaiku::SingleStep() {
 }
 
 Status NativeThreadHaiku::Suspend() {
-  assert(false);
-  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_SUSPEND, m_process.GetID(),
-//                                                  nullptr, GetID());
+  Status ret;
+  status_t error = debug_thread(GetID());
+  if (error != B_OK)
+    ret.SetErrorStringWithFormat("Could not debug_thread: %d", error);
   if (ret.Success())
     SetStopped();
   return ret;

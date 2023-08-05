@@ -9,16 +9,25 @@
 #ifndef liblldb_NativeProcessHaiku_H_
 #define liblldb_NativeProcessHaiku_H_
 
-#include "Plugins/Process/POSIX/NativeProcessELF.h"
+#include <csignal>
+#include <unordered_set>
+
+#include "lldb/Host/Debug.h"
+#include "lldb/Host/HostThread.h"
 #include "lldb/Target/MemoryRegionInfo.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/FileSpec.h"
+#include "lldb/lldb-types.h"
 
 #include "NativeThreadHaiku.h"
+#include "Plugins/Process/POSIX/NativeProcessELF.h"
 
 class BTeamDebugger;
 
 namespace lldb_private {
+class Status;
+class Scalar;
+
 namespace process_haiku {
 
 // FIXME: make per-team, threadsafe (if needed)
@@ -66,8 +75,6 @@ public:
   Status WriteMemory(lldb::addr_t addr, const void *buf, size_t size,
                      size_t &bytes_written) override;
 
-  lldb::addr_t GetSharedLibraryInfoAddress() override;
-
   size_t UpdateThreads() override;
 
   const ArchSpec &GetArchitecture() const override { return m_arch; }
@@ -75,53 +82,97 @@ public:
   Status SetBreakpoint(lldb::addr_t addr, uint32_t size,
                        bool hardware) override;
 
-  // The two following methods are probably not necessary and probably
-  // will never be called.  Nevertheless, we implement them right now
-  // to reduce the differences between different platforms and reduce
-  // the risk of the lack of implementation actually breaking something,
-  // at least for the time being.
+  Status RemoveBreakpoint(lldb::addr_t addr, bool hardware = false) override;
+
+  void DoStopIDBumped(uint32_t newBumpId) override;
+
   Status GetLoadedModuleFileSpec(const char *module_path,
                                  FileSpec &file_spec) override;
+
   Status GetFileLoadAddress(const llvm::StringRef &file_name,
                             lldb::addr_t &load_addr) override;
+
+  NativeThreadHaiku *GetThreadByID(lldb::tid_t id);
+  NativeThreadHaiku *GetCurrentThread();
 
   llvm::ErrorOr<std::unique_ptr<llvm::MemoryBuffer>>
   GetAuxvData() const override;
 
   // Interface used by NativeRegisterContext-derived classes.
   static Status PtraceWrapper(int req, lldb::pid_t pid, void *addr = nullptr,
-                              int data = 0, int *result = nullptr);
+                              void *data = nullptr, size_t data_size = 0,
+                              long *result = nullptr);
 
 private:
-  MainLoop::SignalHandleUP m_sigchld_handle;
   ArchSpec m_arch;
+
   LazyBool m_supports_mem_region = eLazyBoolCalculate;
   std::vector<std::pair<MemoryRegionInfo, FileSpec>> m_mem_region_cache;
+
+  lldb::tid_t m_pending_notification_tid = LLDB_INVALID_THREAD_ID;
+
   HostThread m_port_thread;
 
   static void *PortReadThread(void *arg);
 
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
-                      const ArchSpec &arch, MainLoop &mainloop);
+                     const ArchSpec &arch, MainLoop &mainloop);
+
+  // Returns a list of process threads that we have attached to.
+  static llvm::Expected<std::vector<::pid_t>> Attach(::pid_t pid);
+
+  void MonitorPort(lldb::pid_t pid, int i);
+
+  void MonitorTrace(NativeThreadHaiku &thread);
+
+  void MonitorBreakpoint(NativeThreadHaiku &thread);
+
+  void MonitorWatchpoint(NativeThreadHaiku &thread, uint32_t wp_index);
+
+  void MonitorSignal(const siginfo_t &info, NativeThreadHaiku &thread,
+                     bool exited);
 
   bool HasThreadNoLock(lldb::tid_t thread_id);
 
+  bool StopTrackingThread(lldb::tid_t thread_id);
+
   NativeThreadHaiku &AddThread(lldb::tid_t thread_id);
-  void RemoveThread(lldb::tid_t thread_id);
 
-  void MonitorCallback(lldb::pid_t pid, int signal);
-  void MonitorExited(lldb::pid_t pid, WaitStatus status);
-  void MonitorSIGSTOP(lldb::pid_t pid);
-  void MonitorPort(lldb::pid_t pid, int i);
-  void MonitorSignal(lldb::pid_t pid, int signal);
+  /// Writes a siginfo_t structure corresponding to the given thread ID to the
+  /// memory region pointed to by \p siginfo.
+  Status GetSignalInfo(lldb::tid_t tid, void *siginfo);
 
-  Status PopulateMemoryRegionCache();
+  /// Writes the raw event message code (vis-a-vis PTRACE_GETEVENTMSG)
+  /// corresponding to the given thread ID to the memory pointed to by @p
+  /// message.
+  Status GetEventMessage(lldb::tid_t tid, unsigned long *message);
+
+  void NotifyThreadDeath(lldb::tid_t tid);
+
+  Status Detach(lldb::tid_t tid);
+
+  // This method is requests a stop on all threads which are still running. It
+  // sets up a
+  // deferred delegate notification, which will fire once threads report as
+  // stopped. The
+  // triggerring_tid will be set as the current thread (main stop reason).
+  void StopRunningThreads(lldb::tid_t triggering_tid);
+
+  // Notify the delegate if all threads have stopped.
+  void SignalIfAllThreadsStopped();
+
+  // Resume the given thread, optionally passing it the given signal. The type
+  // of resume
+  // operation (continue, single-step) depends on the state parameter.
+  Status ResumeThread(NativeThreadHaiku &thread, lldb::StateType state,
+                      int signo);
+
+  void ThreadWasCreated(NativeThreadHaiku &thread);
+
   void SigchldHandler();
 
-  Status Attach();
-  Status SetupTrace();
-  Status ReinitializeThreads();
+  Status PopulateMemoryRegionCache();
 };
 
 } // namespace process_haiku
