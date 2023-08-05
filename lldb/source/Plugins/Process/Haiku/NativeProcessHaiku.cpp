@@ -166,7 +166,7 @@ NativeProcessHaiku::Factory::Launch(ProcessLaunchInfo &launch_info,
       B_TEAM_DEBUG_THREADS |
 //      B_TEAM_DEBUG_IMAGES |
 //      B_TEAM_DEBUG_POST_SYSCALL |
-      B_TEAM_DEBUG_SIGNALS |
+//      B_TEAM_DEBUG_SIGNALS |
       B_TEAM_DEBUG_TEAM_CREATION;
   error = team_debugger->SetTeamDebuggingFlags(flags);
   if (error < 0) {
@@ -414,7 +414,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
     siginfo_t info = message.signal_received.info;
     LLDB_LOG(log, "received unknown SIGTRAP stop event ({0}, pid {1} tid {2}",
              info.si_code, GetID(), thread.GetID());
-    MonitorSignal(info, thread, false);
+//    MonitorSignal(info, thread, false);
     break;
   }
 
@@ -722,6 +722,8 @@ Status NativeProcessHaiku::Kill() {
 
 Status NativeProcessHaiku::GetMemoryRegionInfo(lldb::addr_t load_addr,
                                                MemoryRegionInfo &range_info) {
+  return Status("unsupported");
+
   // FIXME review that the final memory region returned extends to the end of
   // the virtual address space,
   // with no perms if it is not mapped.
@@ -801,6 +803,7 @@ Status NativeProcessHaiku::PopulateMemoryRegionCache() {
   }
 
   Status Result;
+  assert(false);
 #if 0
   LinuxMapCallback callback = [&](llvm::Expected<MemoryRegionInfo> Info) {
     if (Info) {
