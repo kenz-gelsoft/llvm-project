@@ -342,13 +342,19 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   case B_DEBUGGER_MESSAGE_THREAD_CREATED: {
       LLDB_LOG(log, "monitoring new thread, pid = {0}, LWP = {1}", pid,
                message.thread_created.new_thread);
-      NativeThreadHaiku &t = AddThread(message.thread_created.new_thread);
+      thread_id new_thread = message.thread_created.new_thread;
+      // ignore debugger nub thread
+      team_info team;
+      if (get_team_info(GetID(), &team) == B_OK &&
+          new_thread == team.debugger_nub_thread)
+        return;
+      NativeThreadHaiku &t = AddThread(new_thread);
       Status error;
       error = t.CopyWatchpointsFrom(
           static_cast<NativeThreadHaiku &>(*GetCurrentThread()));
       if (error.Fail()) {
         LLDB_LOG(log, "failed to copy watchpoints to new thread {0}: {1}",
-                 message.thread_created.new_thread, error);
+                 new_thread, error);
         SetState(StateType::eStateInvalid);
         return;
       }
@@ -368,7 +374,9 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
         SetState(StateType::eStateInvalid);
       return;
     } break;
-//  case B_DEBUGGER_MESSAGE_THREAD_DEBUGGED:
+  case B_DEBUGGER_MESSAGE_THREAD_DEBUGGED:
+    team_debugger->ContinueThread(message.origin.thread);
+    return;
 //  case B_DEBUGGER_MESSAGE_IMAGE_CREATED:
   case B_DEBUGGER_MESSAGE_SINGLE_STEP:
 //  case B_DEBUGGER_MESSAGE_SIGNAL_RECEIVED:
@@ -404,7 +412,7 @@ void NativeProcessHaiku::MonitorPort(lldb::pid_t pid, int i) {
   // otherwise leave the debugger hanging.
   LLDB_LOG(log, "unknown SIGTRAP, passing to generic handler");
 //  MonitorSignal(pid, SIGTRAP);
-  team_debugger->ContinueThread(message.origin.thread);
+//  team_debugger->ContinueThread(message.origin.thread);
 }
 
 void NativeProcessHaiku::MonitorSignal(lldb::pid_t pid, int signal) {
@@ -570,11 +578,11 @@ Status NativeProcessHaiku::Resume(const ResumeActionList &resume_actions) {
       return ret;
   }
 
-  status_t error = team_debugger->ContinueThread(GetID());
-  if (error != B_OK)
-    ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
-  if (ret.Success())
-    SetState(eStateRunning, true);
+//  status_t error = team_debugger->ContinueThread(GetID());
+//  if (error != B_OK)
+//    ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
+//  if (ret.Success())
+//    SetState(eStateRunning, true);
   return ret;
 }
 
@@ -1030,12 +1038,18 @@ Status NativeProcessHaiku::ReinitializeThreads() {
   // Clear old threads
   m_threads.clear();
 
+  team_info team;
+  if (get_team_info(GetID(), &team) != B_OK)
+    return Status("Could not get team info");
+
   // Reinitialize from scratch threads and register them in process
   int32 cookie = 0;
   thread_info info;
   while (get_next_thread_info(GetID(), &cookie, &info) == B_OK) {
     // TODO: Consider to merge with caller's logic
     // as we can access thread name or other thread properties here
+    if (info.thread == team.debugger_nub_thread)
+      continue;
     AddThread(info.thread);
   }
 
