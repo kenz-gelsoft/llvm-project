@@ -13,6 +13,10 @@
 #define _DARWIN_UNLIMITED_SELECT
 #endif
 
+#ifdef __HAIKU__
+#define B_USE_POSITIVE_POSIX_ERRORS
+#endif
+
 #include "lldb/Host/posix/ConnectionFileDescriptorPosix.h"
 #include "lldb/Host/Config.h"
 #include "lldb/Host/Socket.h"

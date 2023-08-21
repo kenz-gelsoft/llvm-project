@@ -25,6 +25,9 @@
 // (which does not support signals).
 
 #if HAVE_SYS_EVENT_H
+#ifdef __HAIKU__
+#define _DEFAULT_SOURCE
+#endif
 #include <sys/event.h>
 #elif defined(_WIN32)
 #include <winsock2.h>
@@ -130,9 +133,11 @@ void MainLoop::RunImpl::ProcessEvents() {
     case EVFILT_READ:
       loop.ProcessReadObject(out_events[i].ident);
       break;
+#ifndef __HAIKU__
     case EVFILT_SIGNAL:
       loop.ProcessSignal(out_events[i].ident);
       break;
+#endif
     default:
       llvm_unreachable("Unknown event");
     }
@@ -324,7 +329,7 @@ MainLoop::RegisterSignal(int signo, const Callback &callback, Status &error) {
   (void)ret;
   assert(ret == 0 && "sigaction failed");
 
-#if HAVE_SYS_EVENT_H
+#if HAVE_SYS_EVENT_H && !defined(__HAIKU__)
   struct kevent ev;
   EV_SET(&ev, signo, EVFILT_SIGNAL, EV_ADD, 0, 0, 0);
   ret = kevent(m_kqueue, &ev, 1, nullptr, 0, nullptr);
@@ -367,7 +372,7 @@ void MainLoop::UnregisterSignal(int signo) {
   assert(ret == 0);
   (void)ret;
 
-#if HAVE_SYS_EVENT_H
+#if HAVE_SYS_EVENT_H && !defined(__HAIKU__)
   struct kevent ev;
   EV_SET(&ev, signo, EVFILT_SIGNAL, EV_DELETE, 0, 0, 0);
   ret = kevent(m_kqueue, &ev, 1, nullptr, 0, nullptr);
