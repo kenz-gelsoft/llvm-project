@@ -24,10 +24,11 @@
 // (ppoll is present but not implemented properly). On windows we use WSApoll
 // (which does not support signals).
 
-#if HAVE_SYS_EVENT_H
 #ifdef __HAIKU__
-#define _DEFAULT_SOURCE
+#undef HAVE_SYS_EVENT_H
+#define HAVE_SYS_EVENT_H 0
 #endif
+#if HAVE_SYS_EVENT_H
 #include <sys/event.h>
 #elif defined(_WIN32)
 #include <winsock2.h>
@@ -329,7 +330,7 @@ MainLoop::RegisterSignal(int signo, const Callback &callback, Status &error) {
   (void)ret;
   assert(ret == 0 && "sigaction failed");
 
-#if HAVE_SYS_EVENT_H && !defined(__HAIKU__)
+#if HAVE_SYS_EVENT_H
   struct kevent ev;
   EV_SET(&ev, signo, EVFILT_SIGNAL, EV_ADD, 0, 0, 0);
   ret = kevent(m_kqueue, &ev, 1, nullptr, 0, nullptr);
@@ -372,7 +373,7 @@ void MainLoop::UnregisterSignal(int signo) {
   assert(ret == 0);
   (void)ret;
 
-#if HAVE_SYS_EVENT_H && !defined(__HAIKU__)
+#if HAVE_SYS_EVENT_H
   struct kevent ev;
   EV_SET(&ev, signo, EVFILT_SIGNAL, EV_DELETE, 0, 0, 0);
   ret = kevent(m_kqueue, &ev, 1, nullptr, 0, nullptr);
