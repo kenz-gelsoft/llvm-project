@@ -16,8 +16,14 @@
 
 #include "NativeThreadHaiku.h"
 
+class BTeamDebugger;
+
 namespace lldb_private {
 namespace process_haiku {
+
+// FIXME: make per-team, threadsafe (if needed)
+extern std::shared_ptr<BTeamDebugger> team_debugger;
+
 /// \class NativeProcessHaiku
 /// Manages communication with the inferior (debugee) process.
 ///
@@ -91,6 +97,9 @@ private:
   ArchSpec m_arch;
   LazyBool m_supports_mem_region = eLazyBoolCalculate;
   std::vector<std::pair<MemoryRegionInfo, FileSpec>> m_mem_region_cache;
+  HostThread m_port_thread;
+
+  static void *PortReadThread(void *arg);
 
   // Private Instance Methods
   NativeProcessHaiku(::pid_t pid, int terminal_fd, NativeDelegate &delegate,
@@ -104,7 +113,7 @@ private:
   void MonitorCallback(lldb::pid_t pid, int signal);
   void MonitorExited(lldb::pid_t pid, WaitStatus status);
   void MonitorSIGSTOP(lldb::pid_t pid);
-  void MonitorSIGTRAP(lldb::pid_t pid);
+  void MonitorPort(lldb::pid_t pid, int i);
   void MonitorSignal(lldb::pid_t pid, int signal);
 
   Status PopulateMemoryRegionCache();

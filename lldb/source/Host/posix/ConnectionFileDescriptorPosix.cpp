@@ -407,7 +407,7 @@ size_t ConnectionFileDescriptor::Read(void *dst, size_t dst_len,
 
   if (error.Fail()) {
     uint32_t error_value = error.GetError();
-    switch (error_value) {
+    switch (static_cast<int32_t>(error_value)) {
     case EAGAIN: // The file was marked for non-blocking I/O, and no data were
                  // ready to be read.
       if (m_read_sp->GetFdType() == IOObject::eFDTypeSocket)
@@ -504,7 +504,7 @@ size_t ConnectionFileDescriptor::Write(const void *src, size_t src_len,
     *error_ptr = error;
 
   if (error.Fail()) {
-    switch (error.GetError()) {
+    switch (static_cast<int32_t>(error.GetError())) {
     case EAGAIN:
     case EINTR:
       status = eConnectionStatusSuccess;
@@ -587,7 +587,7 @@ ConnectionFileDescriptor::BytesAvailable(const Timeout<std::micro> &timeout,
         *error_ptr = error;
 
       if (error.Fail()) {
-        switch (error.GetError()) {
+        switch (static_cast<int32_t>(error.GetError())) {
         case EBADF: // One of the descriptor sets specified an invalid
                     // descriptor.
           return eConnectionStatusLostConnection;

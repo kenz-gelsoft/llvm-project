@@ -20,7 +20,9 @@
 
 // clang-format off
 #include <sys/types.h>
-#ifndef __HAIKU__
+#ifdef __HAIKU__
+#include <TeamDebugger.h>
+#else
 #include <sys/ptrace.h>
 #endif
 // clang-format on
@@ -46,35 +48,31 @@ NativeRegisterContextHaiku::CreateHostNativeRegisterContextHaiku(process.GetArch
 ), m_stop_description() {}
 
 Status NativeThreadHaiku::Resume() {
-  assert(false);
-  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
-//                                                  nullptr, GetID());
-  if (!ret.Success())
-    return ret;
-//  ret = NativeProcessHaiku::PtraceWrapper(PT_CLEARSTEP, m_process.GetID(),
-//                                           nullptr, GetID());
+  Status ret;
+  status_t error = team_debugger->ContinueThread(GetID());
+  if (error != B_OK)
+    ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
   if (ret.Success())
     SetRunning();
   return ret;
 }
 
 Status NativeThreadHaiku::SingleStep() {
-  assert(false);
-  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_RESUME, m_process.GetID(),
-//                                                  nullptr, GetID());
-  if (!ret.Success())
-    return ret;
-//  ret = NativeProcessHaiku::PtraceWrapper(PT_SETSTEP, m_process.GetID(),
-//                                           nullptr, GetID());
+  Status ret;
+  bool single_step = true;
+  status_t error = team_debugger->ContinueThread(GetID(), single_step);
+  if (error != B_OK)
+    ret.SetErrorStringWithFormat("Could not ContinueThread: %d", error);
   if (ret.Success())
     SetStepping();
   return ret;
 }
 
 Status NativeThreadHaiku::Suspend() {
-  assert(false);
-  Status ret;// = NativeProcessHaiku::PtraceWrapper(PT_SUSPEND, m_process.GetID(),
-//                                                  nullptr, GetID());
+  Status ret;
+  status_t error = debug_thread(GetID());
+  if (error != B_OK)
+    ret.SetErrorStringWithFormat("Could not debug_thread: %d", error);
   if (ret.Success())
     SetStopped();
   return ret;
@@ -163,48 +161,16 @@ void NativeThreadHaiku::SetStepping() {
 std::string NativeThreadHaiku::GetName() {
   Log *log(ProcessPOSIXLog::GetLogIfAllCategoriesSet(POSIX_LOG_THREAD));
 
-  assert(false);
-#ifndef __HAIKU__
-#ifdef PT_LWPSTATUS
-  struct ptrace_lwpstatus info = {};
-  info.pl_lwpid = m_tid;
-  Status error = NativeProcessHaiku::PtraceWrapper(
-      PT_LWPSTATUS, static_cast<int>(m_process.GetID()), &info, sizeof(info));
-  if (error.Fail()) {
-    return "";
-  }
-  return info.pl_name;
-#else
-  std::vector<struct kinfo_lwp> infos;
-  int mib[5] = {CTL_KERN, KERN_LWP, static_cast<int>(m_process.GetID()),
-                sizeof(struct kinfo_lwp), 0};
-  size_t size;
-
-  if (::sysctl(mib, 5, nullptr, &size, nullptr, 0) == -1 || size == 0) {
-    LLDB_LOG(log, "sysctl() for LWP info size failed: {0}",
-             llvm::sys::StrError());
-    return "";
-  }
-
-  mib[4] = size / sizeof(size_t);
-  infos.resize(size / sizeof(struct kinfo_lwp));
-
-  if (sysctl(mib, 5, infos.data(), &size, NULL, 0) == -1 || size == 0) {
-    LLDB_LOG(log, "sysctl() for LWP info failed: {0}", llvm::sys::StrError());
-    return "";
-  }
-
-  size_t nlwps = size / sizeof(struct kinfo_lwp);
-  for (size_t i = 0; i < nlwps; i++) {
-    if (static_cast<lldb::tid_t>(infos[i].l_lid) == m_tid) {
-      return infos[i].l_name;
+  int32 cookie = 0;
+  thread_info info;
+  while (get_next_thread_info(m_process.GetID(), &cookie, &info) == B_OK) {
+    if (info.thread == m_tid) {
+      return info.name;
     }
   }
-
+  
   LLDB_LOG(log, "unable to find lwp {0} in LWP infos", m_tid);
   return "";
-#endif
-#endif // __HAIKU__
 }
 
 lldb::StateType NativeThreadHaiku::GetState() { return m_state; }

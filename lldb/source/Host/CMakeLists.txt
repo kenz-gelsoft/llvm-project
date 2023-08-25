@@ -160,7 +160,7 @@ if (WIN32)
 endif()
 
 if (CMAKE_SYSTEM_NAME MATCHES "Haiku")
-  list(APPEND EXTRA_LIBS network)
+  list(APPEND EXTRA_LIBS bsd network)
 endif ()
 
 if (LLDB_ENABLE_LIBEDIT)

@@ -16,7 +16,10 @@
 #include "llvm/Support/Errno.h"
 
 #include <limits.h>
-#ifndef __HAIKU__
+#ifdef __HAIKU__
+#include <private/debug/debug_support.h>
+#include <private/system/system_info.h>
+#else
 #include <sys/ptrace.h>
 #endif
 #include <sys/wait.h>
@@ -150,11 +153,12 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
         close(fd);
 
     // Start tracing this child that is about to exec.
-    assert(false);
-#ifndef __HAIKU__ // TODO: impl
+#ifdef __HAIKU__
+    wait_for_debugger();
+#else
     if (ptrace(PT_TRACE_ME, 0, nullptr, 0) == -1)
-#endif
       ExitWithError(error_fd, "ptrace");
+#endif
   }
 
   // Execute.  We should never return...
@@ -179,6 +183,7 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
   // here.
   ExitWithError(error_fd, "execve");
 }
+
 
 HostProcess
 ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
@@ -207,6 +212,15 @@ ProcessLauncherPosixFork::LaunchProcess(const ProcessLaunchInfo &launch_info,
   }
 
   // parent process
+
+#ifdef __HAIKU__
+  if (launch_info.GetFlags().Test(eLaunchFlagDebug)) {
+    // wait_for_debugger() blocks reading from pipe.
+    // proceed on debug without reading.
+    pipe.Close();
+    return HostProcess(pid);
+  }
+#endif // __HAIKU__
 
   pipe.CloseWriteFileDescriptor();
   char buf[1000];

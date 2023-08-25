@@ -24,6 +24,10 @@
 // (ppoll is present but not implemented properly). On windows we use WSApoll
 // (which does not support signals).
 
+#ifdef __HAIKU__
+#undef HAVE_SYS_EVENT_H
+#define HAVE_SYS_EVENT_H 0
+#endif
 #if HAVE_SYS_EVENT_H
 #include <sys/event.h>
 #elif defined(_WIN32)
@@ -130,9 +134,11 @@ void MainLoop::RunImpl::ProcessEvents() {
     case EVFILT_READ:
       loop.ProcessReadObject(out_events[i].ident);
       break;
+#ifndef __HAIKU__
     case EVFILT_SIGNAL:
       loop.ProcessSignal(out_events[i].ident);
       break;
+#endif
     default:
       llvm_unreachable("Unknown event");
     }

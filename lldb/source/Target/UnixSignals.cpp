@@ -8,6 +8,7 @@
 
 #include "lldb/Target/UnixSignals.h"
 #include "Plugins/Process/Utility/FreeBSDSignals.h"
+#include "Plugins/Process/Utility/HaikuSignals.h"
 #include "Plugins/Process/Utility/LinuxSignals.h"
 #include "Plugins/Process/Utility/MipsLinuxSignals.h"
 #include "Plugins/Process/Utility/NetBSDSignals.h"
@@ -46,6 +47,8 @@ lldb::UnixSignalsSP UnixSignals::Create(const ArchSpec &arch) {
     return std::make_shared<FreeBSDSignals>();
   case llvm::Triple::NetBSD:
     return std::make_shared<NetBSDSignals>();
+  case llvm::Triple::Haiku:
+    return std::make_shared<HaikuSignals>();
   default:
     return std::make_shared<UnixSignals>();
   }
